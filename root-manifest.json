@@ -1,6 +1,6 @@
 {
   "id": "ADGo9KrlgAmEqm3aTHZIpA",
-  "version": "1.10.2",
+  "version": "1.11.0",
   "package": {
     "server": {
       "launch": "dist/main.js",
@@ -29,7 +29,7 @@
           {
             "key": "owner",
             "title": "Owner",
-            "description": "Select exactly one community member who can use owner-only commands: !ban, !unban, !setmodchannel, !setlogchannel, !spamconfig, and !levelconfig. This setting does not grant additional Root permissions.",
+            "description": "Select exactly one community member who can use owner-only commands, including !ban, !unban, !setmodchannel, !setlogchannel, !spamconfig, !levelconfig, and !filter. This setting does not grant additional Root permissions.",
             "required": true,
             "confirmation": "Save",
             "roleOrMember": {
@@ -54,16 +54,6 @@
               "selectBehavior": "role",
               "userIds": [],
               "communityRoleIds": []
-            }
-          },
-          {
-            "key": "additionalFilteredWords",
-            "title": "Filtered Words",
-            "description": "Add only the words or phrases Debo should filter, separated by commas, semicolons, or new lines. Matching ignores letter case. Leave this empty to disable word filtering. Matching messages are deleted and logged in the Logs channel, including messages from Admin Role members and the Owner.",
-            "required": false,
-            "confirmation": "Save",
-            "text": {
-              "defaultValue": ""
             }
           }
         ]

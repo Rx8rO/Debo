@@ -49,13 +49,16 @@ const OWNER_COMMANDS = [
   "!levelconfig reward list/remove/clear — manage configured level rewards.",
   "!setmodchannel — set the private Mod channel (or add clear to remove it).",
   "!setlogchannel — set the Logs channel for moderation actions and automatic filter audits (or add clear to remove it).",
+  "!filter add word1,word2 — add comma-separated filter words or phrases.",
+  "!filter list — show the configured filter terms.",
+  "!filter remove word1,word2 / !filter clear — remove selected terms or disable the filter.",
 ].join("\n");
 
 const MODERATOR_HELP_TEXT = [
   "**Debo complete command list**",
   "Admin Role commands require the configured Admin Role; Owner-only commands require the single member selected as Owner in Global Settings.",
   "Use a private Mod channel for reports and this help, and a separate Logs channel for moderation-action and automatic filter audit logs. Configure them with !setmodchannel and !setlogchannel.",
-  "Configure Global Settings → Automation → Filtered Words; only listed words/phrases are filtered, and an empty field disables the filter. Matching messages from everyone, including admins, are deleted and logged in Logs.",
+  "The configured Owner manages the per-community word filter with !filter add, !filter list, !filter remove, and !filter clear. Only explicitly added terms are filtered; an empty list disables it. Matching messages from everyone, including admins and the Owner, are deleted and logged in Logs.",
   PUBLIC_HELP_TEXT.replace("**Debo public commands**", "**Public commands**"),
   "**Admin Role commands**",
   ADMIN_COMMANDS,

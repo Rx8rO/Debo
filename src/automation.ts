@@ -17,6 +17,7 @@ import {
   reply,
   rootUserMention,
   safeInlineText,
+  sleep,
 } from "./moderation/common";
 import { parseCommand, tokenToText } from "./moderation/parser";
 import { getLogChannelId } from "./moderation/storage";
@@ -75,10 +76,11 @@ const MAX_REWARD_LEVEL = 1_000;
 const MAX_SPAM_MESSAGE_LIMIT = 1_000;
 const MAX_SPAM_WINDOW_SECONDS = 60;
 const MAX_SPAM_TIMEOUT_SECONDS = 86_400;
-const MAX_FILTERED_WORDS = 100;
-const MAX_FILTERED_WORD_LENGTH = 80;
+const MAX_FILTER_WORDS = 100;
+const MAX_FILTER_WORD_LENGTH = 80;
 const XP_KEY_PART = "xp:";
 const SPAM_TIMEOUT_KEY_PART = "spam-timeout:";
+const FILTER_WORDS_KEY_PART = "filter-words";
 const CONFIG_KEY_PART = "config";
 
 let storagePrefix: string | undefined;
@@ -90,8 +92,8 @@ const activeTimeouts = new Map<UserGuid, StoredSpamTimeout>();
 const timeoutTimers = new Map<UserGuid, ReturnType<typeof setTimeout>>();
 const xpRecordsByUser = new Map<UserGuid, UserXpRecord>();
 const rewardAssignmentsInFlight = new Set<UserGuid>();
-let cachedFilterSetting: string | undefined;
-let cachedFilterMatchers: FilteredWordMatcher[] | undefined;
+let configuredFilterWords: string[] = [];
+let filterWordMatchers: FilteredWordMatcher[] = [];
 
 /** Register the community-scoped XP, rank, and anti-spam message handler. */
 export function initializeAutomationBot(communityId: CommunityGuid): void {
@@ -102,6 +104,7 @@ export function initializeAutomationBot(communityId: CommunityGuid): void {
   initialization = Promise.all([
     loadAutomationConfig(),
     restoreSpamTimeouts(),
+    loadFilteredWords(),
   ]).then(() => undefined);
 
   rootServer.community.channelMessages.on(
@@ -135,10 +138,19 @@ async function onMessage(event: ChannelMessageCreatedEvent): Promise<void> {
 
   await initialization;
 
+  const parsed = parseCommand(event.messageContent);
+  let authorizedFilterCommand = false;
   try {
-    if (await checkAndHandleWordFilter(event)) return;
+    authorizedFilterCommand = await isAuthorizedFilterCommand(event, parsed);
   } catch (error: unknown) {
-    console.error("Debo could not check this message against the word filter:", error);
+    console.error("Debo could not verify access to a filter command:", error);
+  }
+  if (!authorizedFilterCommand) {
+    try {
+      if (await checkAndHandleWordFilter(event)) return;
+    } catch (error: unknown) {
+      console.error("Debo could not check this message against the word filter:", error);
+    }
   }
 
   try {
@@ -147,7 +159,6 @@ async function onMessage(event: ChannelMessageCreatedEvent): Promise<void> {
     console.error("Debo could not check this message for spam:", error);
   }
 
-  const parsed = parseCommand(event.messageContent);
   if (parsed) {
     try {
       switch (parsed.name) {
@@ -166,6 +177,9 @@ async function onMessage(event: ChannelMessageCreatedEvent): Promise<void> {
         case "levelconfig":
           await configureLeveling(event, parsed.args);
           break;
+        case "filter":
+          await configureWordFilter(event, parsed.args);
+          break;
         case "spamconfig":
           await configureSpam(event, parsed.args);
           break;
@@ -182,7 +196,7 @@ async function onMessage(event: ChannelMessageCreatedEvent): Promise<void> {
     } catch (error: unknown) {
       console.error(`Automation command !${parsed.name} failed:`, error);
       if (
-        ["rank", "ranks", "ranks10", "level", "levelconfig", "spamconfig", "xp", "levelreset"].includes(parsed.name)
+        ["rank", "ranks", "ranks10", "level", "levelconfig", "filter", "spamconfig", "xp", "levelreset"].includes(parsed.name)
       ) {
         await reply(
           event,
@@ -211,6 +225,16 @@ async function loadAutomationConfig(): Promise<void> {
   } catch (error: unknown) {
     configCache = { ...DEFAULT_CONFIG };
     console.error("Could not load Debo's automation settings:", error);
+  }
+}
+
+async function loadFilteredWords(): Promise<void> {
+  try {
+    const stored = await rootServer.dataStore.appData.get<unknown>(filterWordsKey());
+    setFilteredWordCache(normalizeFilterWords(stored));
+  } catch (error: unknown) {
+    setFilteredWordCache([]);
+    console.error("Could not load Debo's filtered words:", error);
   }
 }
 
@@ -995,6 +1019,126 @@ async function configureSpam(
   );
 }
 
+async function configureWordFilter(
+  event: ChannelMessageCreatedEvent,
+  args: CommandToken[],
+): Promise<void> {
+  if (!(await requireAutomationOwner(event))) return;
+
+  const action = typeof args[0] === "string" ? args[0].toLowerCase() : "";
+  if (action === "list" && args.length === 1) {
+    if (configuredFilterWords.length === 0) {
+      await reply(event, "No filtered words are configured; word filtering is disabled.");
+      return;
+    }
+    await replyFilteredWordList(event, configuredFilterWords);
+    return;
+  }
+
+  if (action === "clear" && args.length === 1) {
+    await saveFilteredWords([]);
+    await reply(event, "Cleared the filtered-word list. Word filtering is now disabled.");
+    return;
+  }
+
+  if ((action === "add" || action === "remove") && args.length >= 2) {
+    const valueTokens = args.slice(1);
+    if (valueTokens.some((token) => typeof token !== "string")) {
+      await reply(event, filterCommandUsage());
+      return;
+    }
+
+    const input = valueTokens.map((token) => token as string).join(" ");
+    const parsed = parseFilterWordInput(input);
+    if (parsed.invalidWords.length > 0) {
+      await reply(
+        event,
+        `These entries are invalid or longer than ${MAX_FILTER_WORD_LENGTH} characters: ${parsed.invalidWords.map((word) => formatFilterLogCode(word, MAX_FILTER_WORD_LENGTH)).join(", ")}`,
+      );
+      return;
+    }
+    if (parsed.words.length === 0) {
+      await reply(event, filterCommandUsage());
+      return;
+    }
+
+    if (action === "add") {
+      const existing = new Set(configuredFilterWords);
+      const wordsToAdd = parsed.words.filter((word) => !existing.has(word));
+      if (configuredFilterWords.length + wordsToAdd.length > MAX_FILTER_WORDS) {
+        await reply(
+          event,
+          `The filtered-word list can contain at most ${MAX_FILTER_WORDS} unique words or phrases.`,
+        );
+        return;
+      }
+      if (wordsToAdd.length === 0) {
+        await reply(event, "Those words are already in the filtered-word list.");
+        return;
+      }
+
+      await saveFilteredWords([...configuredFilterWords, ...wordsToAdd]);
+      await reply(
+        event,
+        `Added ${wordsToAdd.length} filtered word${wordsToAdd.length === 1 ? "" : "s"}. There are now ${configuredFilterWords.length} configured.`,
+      );
+      return;
+    }
+
+    const wordsToRemove = new Set(parsed.words);
+    const remainingWords = configuredFilterWords.filter(
+      (word) => !wordsToRemove.has(word),
+    );
+    const removedCount = configuredFilterWords.length - remainingWords.length;
+    if (removedCount === 0) {
+      await reply(event, "None of those words were in the filtered-word list.");
+      return;
+    }
+
+    await saveFilteredWords(remainingWords);
+    await reply(
+      event,
+      `Removed ${removedCount} filtered word${removedCount === 1 ? "" : "s"}. There are now ${configuredFilterWords.length} configured.`,
+    );
+    return;
+  }
+
+  await reply(event, filterCommandUsage());
+}
+
+async function replyFilteredWordList(
+  event: ChannelMessageCreatedEvent,
+  words: string[],
+): Promise<void> {
+  const messages: string[] = [];
+  let current = `**Filtered words (${words.length})**`;
+
+  for (const [index, word] of words.entries()) {
+    const line = `${index + 1}. ${formatFilterLogCode(word, MAX_FILTER_WORD_LENGTH)}`;
+    if (current.length + line.length + 1 > 1_400) {
+      messages.push(current);
+      current = "**Filtered words (continued)**";
+    }
+    current += `\n${line}`;
+  }
+  messages.push(current);
+
+  for (let index = 0; index < messages.length; index += 1) {
+    await reply(event, messages[index]);
+    if (index < messages.length - 1) await sleep(250);
+  }
+}
+
+function filterCommandUsage(): string {
+  return [
+    "Owner-only filter commands:",
+    "!filter add word1,word2 — add multiple words or phrases in one command.",
+    "!filter list — show the configured list.",
+    "!filter remove word1,word2 — remove words from the list.",
+    "!filter clear — remove all words and disable filtering.",
+  ].join("\n");
+}
+
 async function addMemberXp(
   event: ChannelMessageCreatedEvent,
   args: CommandToken[],
@@ -1056,6 +1200,18 @@ async function resetMemberLevel(
     event,
     `Reset ${rootUserMention(target.userId, target.displayName)} to level 1 with 0 XP. This does not remove roles they already earned.`,
   );
+}
+
+async function isAuthorizedFilterCommand(
+  event: ChannelMessageCreatedEvent,
+  parsed: ReturnType<typeof parseCommand>,
+): Promise<boolean> {
+  if (parsed?.name !== "filter" || typeof parsed.args[0] !== "string") {
+    return false;
+  }
+  const action = parsed.args[0].toLowerCase();
+  if (!["add", "list", "remove", "clear"].includes(action)) return false;
+  return (await checkOwner(event.userId)).allowed;
 }
 
 async function requireAutomationOwner(
@@ -1163,41 +1319,76 @@ async function checkAndHandleWordFilter(
 }
 
 function getFilteredWordMatchers(): FilteredWordMatcher[] {
-  const setting = rootServer.globalSettings?.automation?.additionalFilteredWords;
-  const settingValue = typeof setting === "string" ? setting : "";
-  if (cachedFilterMatchers && settingValue === cachedFilterSetting) {
-    return cachedFilterMatchers;
-  }
+  return filterWordMatchers;
+}
 
-  const configuredWords = settingValue
-    .split(/[,;\r\n]+/)
-    .map((word) => word.normalize("NFKC").trim().toLowerCase().replace(/\s+/g, " "));
-  const uniqueWords = new Set<string>();
-  const matchers: FilteredWordMatcher[] = [];
+function setFilteredWordCache(words: string[]): void {
+  configuredFilterWords = words;
+  filterWordMatchers = buildFilteredWordMatchers(words);
+}
 
-  for (const word of configuredWords) {
-    if (
-      word.length === 0 ||
-      word.length > MAX_FILTERED_WORD_LENGTH ||
-      !/[\p{L}\p{N}]/u.test(word) ||
-      uniqueWords.has(word)
-    ) {
-      continue;
-    }
-
-    uniqueWords.add(word);
+function buildFilteredWordMatchers(words: string[]): FilteredWordMatcher[] {
+  return words.map((word) => {
     const escapedWord = escapeRegExp(word).replace(/\s+/g, "\\s+");
     const pattern = new RegExp(
       String.raw`(^|[^\p{L}\p{N}\p{M}_])(${escapedWord})(?=$|[^\p{L}\p{N}\p{M}_])`,
       "iu",
     );
-    matchers.push({ word, pattern });
-    if (matchers.length >= MAX_FILTERED_WORDS) break;
-  }
+    return { word, pattern };
+  });
+}
 
-  cachedFilterSetting = settingValue;
-  cachedFilterMatchers = matchers;
-  return matchers;
+function normalizeFilterWords(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  const words = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    const word = normalizeFilterWord(entry);
+    if (word) words.add(word);
+    if (words.size >= MAX_FILTER_WORDS) break;
+  }
+  return Array.from(words);
+}
+
+function parseFilterWordInput(raw: string): {
+  words: string[];
+  invalidWords: string[];
+} {
+  const words = new Set<string>();
+  const invalidWords: string[] = [];
+  for (const value of raw.split(/[,;\r\n]+/)) {
+    if (!value.trim()) continue;
+    const word = normalizeFilterWord(value);
+    if (word) words.add(word);
+    else invalidWords.push(value.trim());
+  }
+  return { words: Array.from(words), invalidWords };
+}
+
+function normalizeFilterWord(value: string): string | undefined {
+  const word = value
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+  if (
+    word.length === 0 ||
+    word.length > MAX_FILTER_WORD_LENGTH ||
+    !/[\p{L}\p{N}]/u.test(word)
+  ) {
+    return undefined;
+  }
+  return word;
+}
+
+async function saveFilteredWords(words: string[]): Promise<void> {
+  const normalized = normalizeFilterWords(words);
+  await rootServer.dataStore.appData.set<string[]>({
+    key: filterWordsKey(),
+    value: normalized,
+  });
+  setFilteredWordCache(normalized);
 }
 
 function escapeRegExp(value: string): string {
@@ -1227,7 +1418,7 @@ async function logFilteredMessage(
     const memberName = await getCommunityMemberName(event.userId);
     const listedMatches = matchedWords
       .slice(0, 5)
-      .map((word) => formatFilterLogCode(word, MAX_FILTERED_WORD_LENGTH))
+      .map((word) => formatFilterLogCode(word, MAX_FILTER_WORD_LENGTH))
       .join(", ");
     const extraMatches =
       matchedWords.length > 5 ? ` (and ${matchedWords.length - 5} more)` : "";
@@ -1508,6 +1699,10 @@ function escapeLikePattern(value: string): string {
 
 function configKey(): string {
   return `${getStoragePrefix()}:${CONFIG_KEY_PART}`;
+}
+
+function filterWordsKey(): string {
+  return `${getStoragePrefix()}:${FILTER_WORDS_KEY_PART}`;
 }
 
 function xpKeyPrefix(): string {
