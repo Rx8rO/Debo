@@ -12,7 +12,11 @@ import { postTextToLogChannel } from "../logging";
 import { getLogChannelId } from "../storage";
 
 const HELP_TEXT = [
-  "**Debo moderation commands**",
+  "**Debo commands**",
+  "!rank — show your level, total XP, progress, and rank in this community.",
+  "!rank @user — show another member's level, XP, progress, and community rank.",
+  "!levelconfig [xp|cooldown|rolelevel] [value] — view or update leveling values (Admin Role only).",
+  "!spamconfig [limit|window|timeout] [value] — view or update spam controls (Admin Role only).",
   "!kick @user [reason] — remove a member without banning them; reason is optional.",
   "!ban @user reason — permanently ban a member; reason is required.",
   "!unban userID — unban the active ban for a Root user ID (parentheses are optional).",

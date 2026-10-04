@@ -1,6 +1,6 @@
 {
   "id": "ADGo9KrlgAmEqm3aTHZIpA",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "package": {
     "server": {
       "launch": "dist/main.js",
@@ -19,6 +19,36 @@
             "title": "Admin Role",
             "description": "Only members with this selected role can use Debo's moderation commands; this setting does not grant additional Root permissions.",
             "required": true,
+            "confirmation": "Save",
+            "roleOrMember": {
+              "selectBehavior": "role",
+              "userIds": [],
+              "communityRoleIds": []
+            }
+          }
+        ]
+      },
+      {
+        "key": "automation",
+        "title": "Automation",
+        "items": [
+          {
+            "key": "levelRewardRole",
+            "title": "Level Reward Role",
+            "description": "Optional role Debo assigns when a member reaches the configured reward level. The level is set with !levelconfig rolelevel.",
+            "required": false,
+            "confirmation": "Save",
+            "roleOrMember": {
+              "selectBehavior": "role",
+              "userIds": [],
+              "communityRoleIds": []
+            }
+          },
+          {
+            "key": "spamTimeoutRole",
+            "title": "Spam Timeout Role",
+            "description": "Optional temporary role Debo applies after a spam trigger. Configure this role to deny sending messages in the channels you want protected; without it, Debo still deletes the member's messages during the timeout.",
+            "required": false,
             "confirmation": "Save",
             "roleOrMember": {
               "selectBehavior": "role",
