@@ -58,11 +58,7 @@ async function onMessage(event: ChannelMessageCreatedEvent): Promise<void> {
   if (parsed.name !== "help") {
     const authorization = await checkModeratorRole(event.userId);
     if (!authorization.allowed) {
-      const message =
-        authorization.reason === "not-configured"
-          ? "Moderation is not configured yet. Choose an Admin Role in Debo's Global Settings first."
-          : "You do not have the configured Admin Role, so Debo did not run that command.";
-      await reply(event, message);
+      await reply(event, "You are not an admin meow 🐾", 5_000);
       return;
     }
   }

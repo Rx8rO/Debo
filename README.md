@@ -10,10 +10,14 @@ Use a Root user mention for `@user` and either an exact role name or a Root role
 | --- | --- | --- |
 | `!rank` | Everyone | Shows your community rank, level, total XP, and progress to the next level. |
 | `!rank @user` | Everyone | Shows the mentioned member's rank, level, XP, and progress. |
-| `!levelconfig` | Admin Role | Shows the current XP and reward-level settings. |
-| `!levelconfig xp amount` | Admin Role | Sets XP awarded by an eligible message (1–10,000). |
+| `!levelconfig` | Admin Role | Shows the current random XP range, cooldown, and reward settings. |
+| `!levelconfig xp min max` | Admin Role | Sets the inclusive random XP range per eligible message (each value 1–10,000). |
 | `!levelconfig cooldown seconds` | Admin Role | Sets the per-member XP cooldown (0–86,400 seconds; 0 means no cooldown). |
-| `!levelconfig rolelevel level` | Admin Role | Sets the level at which the selected reward role is assigned (1–1,000). |
+| `!levelconfig rolelevel level` | Admin Role | Sets the level at which the primary Global Settings reward role is assigned (1–1,000). |
+| `!levelconfig reward add level @role` | Admin Role | Adds a role to grant when a member reaches that level (1–1,000). |
+| `!levelconfig reward list` | Admin Role | Lists primary and additional level reward roles. |
+| `!levelconfig reward remove level @role` | Admin Role | Removes a role from the additional reward list for that level. |
+| `!levelconfig reward clear level` | Admin Role | Clears all additional reward roles for that level; the primary Global Settings reward is unchanged. |
 | `!spamconfig` | Admin Role | Shows the current spam limits and timeout setup. |
 | `!spamconfig limit messages` | Admin Role | Sets how many messages are allowed in the configured time window (1–1,000). Messages above the limit are deleted. |
 | `!spamconfig window seconds` | Admin Role | Sets the rolling spam window (0.1–60 seconds; decimals are allowed). |
@@ -39,14 +43,14 @@ Use a Root user mention for `@user` and either an exact role name or a Root role
 
 ## Leveling and spam protection
 
-- A non-command member message in a community can earn XP, subject to the per-member cooldown. Defaults are **10 XP per eligible message** and a **60-second cooldown**. Set either value with the admin-only `!levelconfig` commands.
+- A non-command member message in a community can earn XP, subject to the per-member cooldown. Defaults are a **random 5–10 XP per eligible message** and a **60-second cooldown**. Set the inclusive XP range with `!levelconfig xp min max`.
 - Level 1 takes 100 XP, level 2 takes 200 additional XP, level 3 takes 300 additional XP, and so on. `!rank` reports total XP and progress within the current level. The community leaderboard ranks members who have earned XP.
-- The optional **Level Reward Role** is selected in Debo's **Global Settings → Automation**. `!levelconfig rolelevel` chooses the threshold. When a member earns XP at or above that level, Debo adds the selected role.
+- The optional primary **Level Reward Role** is selected in Debo's **Global Settings → Automation**. `!levelconfig rolelevel` chooses its threshold. To assign different roles at multiple levels, an Admin Role member can run `!levelconfig reward add <level> @role`; use `reward list`, `reward remove`, and `reward clear` to manage those extra rewards. Reward mappings are saved per community.
 - Spam protection counts each member's messages across the community over a rolling time window. By default, the first **5 messages per 1 second** are allowed; the 6th and later messages in that window are deleted. Configure the count and window with `!spamconfig limit` and `!spamconfig window`.
 - The default additional spam timeout is **10 seconds**. Root's Bot SDK does not expose a direct text-chat timeout endpoint. Select an optional **Spam Timeout Role** in **Global Settings → Automation**, then configure that role to deny sending messages in the channels you want protected. Debo applies the role temporarily and removes it when the timeout ends. If no role is selected (or Root cannot apply it), Debo still deletes that member's messages for the timeout period, but Root will not stop them from attempting to send messages. Role permissions must be configured separately; selecting the role does not configure channel permissions.
 - If a member already had the timeout role before the spam trigger, Debo leaves it in place rather than removing a role it did not add. Active timeout records are restored after a Debo restart.
 
-All numeric configuration commands require the configured **Admin Role** and fail closed if no Admin Role is selected or its membership cannot be verified. The role pickers are optional. Numeric values are set with commands because Root's current clients do not render editable numeric Global Settings controls.
+All numeric configuration commands require the configured **Admin Role** and fail closed if no Admin Role is selected or its membership cannot be verified. Non-admin command replies say “You are not an admin meow 🐾” and disappear after 5 seconds. The role pickers are optional. Numeric values are set with commands because Root's current clients do not render editable numeric Global Settings controls.
 
 `!purge` does not count or delete its own command message. Targeted purge uses Root message-history pagination and Root GUID timestamps; it has no arbitrary age cutoff. Deleting 100 messages is paced to stay under Root's approximate API rate limit, so a full purge can take a short while.
 
@@ -69,7 +73,7 @@ Root's Bot SDK does not expose a direct-message channel for sending a full help 
 
    If you already ran `npm.cmd install` in this same project folder, and `package.json` has not changed, skip it on later updates and just run `npm.cmd run build`. This update adds no dependencies.
 
-2. Install/update Debo to manifest version **1.5.0**. Keep the requested permissions enabled: community `kick`, `createBan`, `manageBans`, and `manageRoles`; channel `createMessage`, `deleteMessageOther`, and `viewMessageHistory`. Open Debo's **Global Settings** and select one role in **Admin Role**. Members need that role to use moderation and numeric configuration commands. This setting only gates Debo's commands; it does not grant additional Root permissions. If it is missing, those commands fail closed.
+2. Install/update Debo to manifest version **1.6.0**. Keep the requested permissions enabled: community `kick`, `createBan`, `manageBans`, and `manageRoles`; channel `createMessage`, `deleteMessageOther`, and `viewMessageHistory`. Open Debo's **Global Settings** and select one role in **Admin Role**. Members need that role to use moderation and numeric configuration commands. This setting only gates Debo's commands; it does not grant additional Root permissions. If it is missing, those commands fail closed.
 3. Still in **Global Settings → Automation**, optionally select a **Level Reward Role** and/or **Spam Timeout Role**. For the spam role to block messages, separately configure it to deny sending messages in the channels you want protected. Make sure Debo can manage roles.
 4. In the channel you want to use for moderation logs and reports, an authorized moderator runs:
 
@@ -108,14 +112,15 @@ Use an isolated test community such as **Debo-Test**, not a real community. Afte
 1. From an account with the Admin Role, temporarily speed up leveling:
 
    ```text
-   !levelconfig xp 100
+   !levelconfig xp 100 100
    !levelconfig cooldown 0
    !levelconfig rolelevel 1
    ```
 
 2. Send one ordinary chat message (not a `!` command), then run `!rank`. You should have 100 XP and be level 1. If a Level Reward Role is selected, Debo should assign it after that XP award.
-3. Test another member's public lookup with `!rank @user`.
-4. Test spam deletion with:
+3. To test an additional level reward, run `!levelconfig reward add 2 @role` using a test role mention, then send two more ordinary messages. At 300 XP you should reach level 2 and receive that role. Check the saved mapping with `!levelconfig reward list`.
+4. Test another member's public lookup with `!rank @user`.
+5. Test spam deletion with:
 
    ```text
    !spamconfig limit 5
@@ -124,10 +129,11 @@ Use an isolated test community such as **Debo-Test**, not a real community. Afte
    ```
 
    Send more than five messages quickly from a test member. The 6th message in the one-second window should be deleted; further messages should also be hidden during the 10-second timeout. To verify a real Root mute as well, configure the selected Spam Timeout Role to deny message sending in the test channel.
-5. Restore normal settings when finished, for example:
+6. Clear the temporary level-2 test reward and restore normal settings when finished, for example:
 
    ```text
-   !levelconfig xp 10
+   !levelconfig reward clear 2
+   !levelconfig xp 5 10
    !levelconfig cooldown 60
    !levelconfig rolelevel 5
    !spamconfig limit 5

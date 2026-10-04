@@ -1,6 +1,6 @@
 {
   "id": "ADGo9KrlgAmEqm3aTHZIpA",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "package": {
     "server": {
       "launch": "dist/main.js",
@@ -35,7 +35,7 @@
           {
             "key": "levelRewardRole",
             "title": "Level Reward Role",
-            "description": "Optional role Debo assigns when a member reaches the configured reward level. The level is set with !levelconfig rolelevel.",
+            "description": "Optional primary role Debo assigns at the configured reward level. Add additional roles for any level with the admin-only !levelconfig reward add command.",
             "required": false,
             "confirmation": "Save",
             "roleOrMember": {
