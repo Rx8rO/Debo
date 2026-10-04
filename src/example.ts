@@ -2,18 +2,17 @@ import {
   ChannelMessageCreatedEvent,
   ChannelMessageEvent,
   CommunityMemberRoleAddRequest,
-  CommunityRole,
   CommunityRoleGuid,
   MessageType,
+  ReadOnlyMemberGroup,
   RootApiException,
   rootServer,
   UserGuid,
 } from "@rootsdk/server-bot";
 
-// This is the tutorial's temporary role-name lookup. Once the tutorial works,
-// we will replace it with a per-community role picker in root-manifest.json.
-const PARTICIPANT_ROLE_NAME = "Participant";
 const MESSAGES_REQUIRED = 5;
+const SETTINGS_GROUP = "welcome";
+const ROLE_SETTING = "participantRole";
 
 // Register for new channel messages when the bot starts.
 export function initializeWelcomeBot(): void {
@@ -38,11 +37,11 @@ async function onMessage(evt: ChannelMessageCreatedEvent): Promise<void> {
 
     console.log(`Message count for ${evt.userId}: ${count}`);
 
-    // The tutorial assigns Participant on the member's fifth message.
+    // The community-configured role is assigned on the member's fifth message.
     if (count === MESSAGES_REQUIRED) {
-      const roleId: CommunityRoleGuid = await getParticipantRoleId();
+      const roleId: CommunityRoleGuid = getConfiguredRoleId();
       await assignRole(evt.userId, roleId);
-      console.log(`Assigned ${PARTICIPANT_ROLE_NAME} to ${evt.userId}`);
+      console.log(`Assigned configured role ${roleId} to ${evt.userId}`);
     }
   } catch (error: unknown) {
     if (error instanceof RootApiException) {
@@ -55,20 +54,19 @@ async function onMessage(evt: ChannelMessageCreatedEvent): Promise<void> {
   }
 }
 
-async function getParticipantRoleId(): Promise<CommunityRoleGuid> {
-  const roles: CommunityRole[] =
-    await rootServer.community.communityRoles.list();
-  const participantRole = roles.find(
-    (role: CommunityRole) => role.name === PARTICIPANT_ROLE_NAME,
-  );
+function getConfiguredRoleId(): CommunityRoleGuid {
+  const selectedRoleGroup = rootServer.globalSettings?.[SETTINGS_GROUP]?.[
+    ROLE_SETTING
+  ] as ReadOnlyMemberGroup | undefined;
+  const roleId = selectedRoleGroup?.communityRoleIds[0];
 
-  if (!participantRole) {
+  if (!roleId) {
     throw new Error(
-      `Role "${PARTICIPANT_ROLE_NAME}" was not found in this community.`,
+      'No role selected. Open Debo\'s Global Settings and choose a role for "Role to assign".',
     );
   }
 
-  return participantRole.id;
+  return roleId;
 }
 
 async function assignRole(

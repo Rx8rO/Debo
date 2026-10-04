@@ -1,11 +1,8 @@
 # Debo — Root Welcome Bot
 
-Debo is being built in two stages:
+Debo counts each member's non-system channel messages and assigns a community-selected role after the fifth message. Message counts are kept in Root's persistent `appData` store and keyed by the incoming event's user ID, so the code does not hardcode member IDs.
 
-1. Verify Root's tutorial behavior in the `Debo-Test` community: count a member's messages and assign the `Participant` role after their fifth message.
-2. Make the bot community-configurable with a Root global-setting role picker, so each community can choose its own role instead of relying on a role name in code.
-
-The current tutorial implementation stores counts in Root's persistent `appData` key-value store. It uses the incoming event's member ID, not a hardcoded user ID. For this tutorial stage only, it finds the role named `Participant` in the current community at runtime; it does not hardcode a role ID. We will replace this name lookup with a per-community setting after verifying the tutorial end to end.
+Each community chooses the role in Root's **Global Settings**. The choice is declared in `root-manifest.json` and read at runtime; the bot does not assume that every community uses the same role name or role ID.
 
 ## Local development
 
@@ -25,14 +22,15 @@ The current tutorial implementation stores counts in Root's persistent `appData`
    npm.cmd run build
    ```
 
-4. Start the local development bot:
+4. In the Root client, open the community connected to the token, go to Debo's **Global Settings**, select the role to assign, and save it.
+5. Start the local development bot:
 
    ```powershell
    npm.cmd run bot
    ```
 
-5. In the `Debo-Test` community, post five messages as a member. Check the bot terminal for the count logs and verify that the member receives the `Participant` role after message five.
+6. After a clean test reset, post five messages as a member and verify that the selected role is assigned after message five.
 
-For the tutorial test only, follow Root's role-permission setup in the disposable test community. Do not grant broad permissions such as Community Full Control in a real community. The final version should request only the permissions it needs and use community-level settings for each community's role choice.
+For development, the test community may follow Root's tutorial permission setup. Never grant broad permissions such as Community Full Control in a real community. The manifest requests the narrower `manageRoles` permission needed to assign roles.
 
 The `npm.cmd` form avoids PowerShell's script execution-policy issue. Command Prompt can use `npm` without the `.cmd` suffix.

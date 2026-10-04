@@ -1,11 +1,38 @@
 {
-  "id": "your-bot-id",
+  "id": "ADGo9KrlgAmEqm3aTHZIpA",
   "version": "1.0.0",
   "package": {
     "server": {
       "launch": "dist/main.js",
       "deploy": ["dist"],
       "nodeModules": ["node_modules"]
+    }
+  },
+  "settings": {
+    "groups": [
+      {
+        "key": "welcome",
+        "title": "Welcome Bot",
+        "items": [
+          {
+            "key": "participantRole",
+            "title": "Role to assign",
+            "description": "Choose the role members receive after posting five messages.",
+            "required": true,
+            "confirmation": "Save",
+            "roleOrMember": {
+              "selectBehavior": "roleSingle",
+              "userIds": [],
+              "communityRoleIds": []
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "community": {
+      "manageRoles": true
     }
   }
 }
