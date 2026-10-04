@@ -1,11 +1,15 @@
 import {
   ChannelGuid,
+  CommunityMemberBanGuid,
   rootServer,
   UserGuid,
 } from "@rootsdk/server-bot";
 
+// Keep the v1 key so existing communities retain their configured destination
+// when the user-facing command is renamed from !setlogchannel to !setmodchannel.
 const LOG_CHANNEL_KEY = "moderation:log-channel:v1";
 const WARNINGS_KEY = "moderation:warnings:v1";
+const BANS_KEY = "moderation:bans:v1";
 
 export type StoredWarning = {
   id: string;
@@ -16,6 +20,17 @@ export type StoredWarning = {
 };
 
 export type WarningArchive = Record<string, StoredWarning[]>;
+
+export type StoredBan = {
+  banId: CommunityMemberBanGuid;
+  userId: UserGuid;
+  issuedAt: string;
+  reason: string;
+  moderatorId: UserGuid;
+  targetName: string;
+};
+
+export type BanArchive = Record<string, StoredBan>;
 
 export async function getLogChannelId(): Promise<ChannelGuid | undefined> {
   return rootServer.dataStore.appData.get<ChannelGuid>(LOG_CHANNEL_KEY);
@@ -85,4 +100,48 @@ export async function removeWarning(
   );
 
   return removed;
+}
+
+export async function getBanArchive(): Promise<BanArchive> {
+  const stored = await rootServer.dataStore.appData.get<BanArchive>(BANS_KEY);
+  return stored && typeof stored === "object" ? stored : {};
+}
+
+export async function saveBanRecord(record: StoredBan): Promise<void> {
+  await rootServer.dataStore.appData.update<BanArchive>(
+    BANS_KEY,
+    (current) => {
+      const archive = current && typeof current === "object" ? current : {};
+      return { ...archive, [record.banId]: record };
+    },
+    {},
+  );
+}
+
+/** Store observed bans only when !ban has not already saved richer metadata. */
+export async function saveBanRecordIfMissing(record: StoredBan): Promise<void> {
+  await rootServer.dataStore.appData.update<BanArchive>(
+    BANS_KEY,
+    (current) => {
+      const archive = current && typeof current === "object" ? current : {};
+      if (archive[record.banId]) return archive;
+      return { ...archive, [record.banId]: record };
+    },
+    {},
+  );
+}
+
+export async function removeBanRecord(
+  banId: CommunityMemberBanGuid,
+): Promise<void> {
+  await rootServer.dataStore.appData.update<BanArchive>(
+    BANS_KEY,
+    (current) => {
+      const archive = current && typeof current === "object" ? current : {};
+      const next: BanArchive = { ...archive };
+      delete next[banId];
+      return next;
+    },
+    {},
+  );
 }

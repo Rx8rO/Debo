@@ -91,6 +91,17 @@ export async function reply(
   }
 }
 
+/** Avoid a redundant confirmation when the requested report is already here. */
+export async function replyUnlessInChannel(
+  event: ChannelMessageCreatedEvent,
+  destinationChannelId: ChannelGuid,
+  content: string,
+  deleteAfterMs = 15_000,
+): Promise<void> {
+  if (event.channelId === destinationChannelId) return;
+  await reply(event, content, deleteAfterMs);
+}
+
 export function scheduleMessageDeletion(
   channelId: ChannelGuid,
   messageId: MessageGuid,

@@ -3,14 +3,13 @@ import { getMentionedUser } from "../command-helpers";
 import {
   getCommunityMemberName,
   reply,
+  replyUnlessInChannel,
   rootUserMention,
   safeInlineText,
 } from "../common";
 import { getLogChannelOrReply, postTextToLogChannel } from "../logging";
 import { getWarningArchive, StoredWarning } from "../storage";
 import { CommandToken } from "../types";
-
-const WARNING_REPORT_DELETE_AFTER_MS = 15_000;
 
 export async function showWarnings(
   event: ChannelMessageCreatedEvent,
@@ -27,8 +26,8 @@ export async function showWarnings(
     return;
   }
 
-  const logChannelId = await getLogChannelOrReply(event);
-  if (!logChannelId) return;
+  const modChannelId = await getLogChannelOrReply(event);
+  if (!modChannelId) return;
 
   const archive = await getWarningArchive();
   const report = target
@@ -40,13 +39,13 @@ export async function showWarnings(
     report,
   ].join("\n\n");
 
-  await postTextToLogChannel(logChannelId, content, {
-    deleteAfterMs: WARNING_REPORT_DELETE_AFTER_MS,
-  });
-  await reply(
+  // Keep the requested information in the mod channel. Only the brief
+  // cross-channel confirmation is temporary.
+  await postTextToLogChannel(modChannelId, content);
+  await replyUnlessInChannel(
     event,
-    "Warning information was posted in the moderation log channel and will be deleted after 15 seconds.",
-    WARNING_REPORT_DELETE_AFTER_MS,
+    modChannelId,
+    "I posted the warning report in the mod channel.",
   );
 }
 

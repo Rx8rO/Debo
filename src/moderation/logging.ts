@@ -4,7 +4,7 @@ import {
   rootServer,
   UserGuid,
 } from "@rootsdk/server-bot";
-import { reply, safeInlineText, scheduleMessageDeletion, sleep } from "./common";
+import { reply, safeInlineText, sleep } from "./common";
 import { getLogChannelId } from "./storage";
 
 export type ModerationLogEntry = {
@@ -15,10 +15,6 @@ export type ModerationLogEntry = {
   details?: string;
 };
 
-export type LogPostOptions = {
-  deleteAfterMs?: number;
-};
-
 export async function getLogChannelOrReply(
   event: ChannelMessageCreatedEvent,
 ): Promise<ChannelGuid | undefined> {
@@ -27,7 +23,7 @@ export async function getLogChannelOrReply(
   if (!channelId) {
     await reply(
       event,
-      "The moderation log channel is not set. Run !setlogchannel in the channel you want to use.",
+      "The mod channel is not set. Run !setmodchannel in the channel you want to use.",
     );
     return undefined;
   }
@@ -37,7 +33,7 @@ export async function getLogChannelOrReply(
     if (!channel.channelPermission.channelCreateMessage) {
       await reply(
         event,
-        "Debo cannot post in the configured moderation log channel. Give Debo access to send messages there, then run !setlogchannel again.",
+        "Debo cannot post in the configured mod channel. Give Debo access to send messages there, then run !setmodchannel again.",
       );
       return undefined;
     }
@@ -46,7 +42,7 @@ export async function getLogChannelOrReply(
     console.error("The configured moderation log channel is unavailable:", error);
     await reply(
       event,
-      "I cannot access the configured moderation log channel. Run !setlogchannel again in a channel Debo can access, and make sure Debo can post there.",
+      "I cannot access the configured mod channel. Run !setmodchannel again in a channel Debo can access, and make sure Debo can post there.",
     );
     return undefined;
   }
@@ -102,7 +98,7 @@ export async function logActionAndReply(
     console.error("The moderation action succeeded, but its log could not be sent:", error);
     await reply(
       event,
-      `${successMessage} Warning: I could not post the log. Check Debo's access to the configured log channel.`,
+      `${successMessage} Warning: I could not post the log in the configured mod channel. Check Debo's access there.`,
     );
   }
 }
@@ -110,33 +106,20 @@ export async function logActionAndReply(
 export async function postTextToLogChannel(
   channelId: ChannelGuid,
   content: string,
-  options: LogPostOptions = {},
-): Promise<number> {
+): Promise<void> {
   const chunks = splitIntoChunks(content, 1700);
 
   for (let index = 0; index < chunks.length; index += 1) {
-    const message = await rootServer.community.channelMessages.create({
+    await rootServer.community.channelMessages.create({
       channelId,
       content: chunks[index],
     });
-
-    if (options.deleteAfterMs !== undefined) {
-      // Stagger chunk deletion; scheduleMessageDeletion also serializes deletes
-      // to avoid bursting Root's write limit when a long report spans chunks.
-      scheduleMessageDeletion(
-        channelId,
-        message.id,
-        options.deleteAfterMs + index * 250,
-      );
-    }
 
     if (index < chunks.length - 1) {
       // Root's approximate channel-message command limit is five requests/sec.
       await sleep(250);
     }
   }
-
-  return chunks.length;
 }
 
 function splitIntoChunks(content: string, maximumLength: number): string[] {

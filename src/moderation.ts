@@ -5,13 +5,16 @@ import {
   rootServer,
 } from "@rootsdk/server-bot";
 import { checkModeratorRole } from "./moderation/access";
+import { initializeBanTracking } from "./moderation/ban-tracking";
 import { banMember } from "./moderation/commands/ban";
+import { showBans } from "./moderation/commands/bans";
 import { showModerationHelp } from "./moderation/commands/help";
 import { kickMember } from "./moderation/commands/kick";
 import { kickVoiceMember } from "./moderation/commands/kick-vc";
 import { purgeMessages } from "./moderation/commands/purge";
 import { changeMemberRole } from "./moderation/commands/role";
-import { setLogChannel } from "./moderation/commands/set-log-channel";
+import { setModChannel } from "./moderation/commands/set-log-channel";
+import { unbanMember } from "./moderation/commands/unban";
 import { manageWarning } from "./moderation/commands/warn";
 import { showWarnings } from "./moderation/commands/warnings";
 import { describeError, reply } from "./moderation/common";
@@ -20,6 +23,7 @@ import { CommandContext, ModerationCommand } from "./moderation/types";
 
 const commands = new Map<string, ModerationCommand>([
   ["ban", (context, args) => banMember(context.event, args)],
+  ["bans", (context, args) => showBans(context.event, args)],
   [
     "kick",
     (context, args) => {
@@ -32,12 +36,16 @@ const commands = new Map<string, ModerationCommand>([
   ["help", (context) => showModerationHelp(context.event)],
   ["purge", (context, args) => purgeMessages(context.event, args)],
   ["role", (context, args) => changeMemberRole(context.event, args)],
-  ["setlogchannel", (context, args) => setLogChannel(context.event, args)],
+  ["setmodchannel", (context, args) => setModChannel(context.event, args)],
+  // Preserve the old command as an alias so existing moderators aren't caught out.
+  ["setlogchannel", (context, args) => setModChannel(context.event, args)],
+  ["unban", (context, args) => unbanMember(context.event, args)],
   ["warn", (context, args) => manageWarning(context.event, args)],
   ["warnings", (context, args) => showWarnings(context.event, args)],
 ]);
 
 export function initializeModerationBot(): void {
+  initializeBanTracking();
   rootServer.community.channelMessages.on(
     ChannelMessageEvent.ChannelMessageCreated,
     onMessage,

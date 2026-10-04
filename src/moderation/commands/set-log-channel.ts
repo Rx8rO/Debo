@@ -6,7 +6,7 @@ import { reply } from "../common";
 import { clearLogChannelId, setLogChannelId } from "../storage";
 import { CommandToken } from "../types";
 
-export async function setLogChannel(
+export async function setModChannel(
   event: ChannelMessageCreatedEvent,
   args: CommandToken[],
 ): Promise<void> {
@@ -16,14 +16,14 @@ export async function setLogChannel(
     args[0].toLowerCase() === "clear"
   ) {
     await clearLogChannelId();
-    await reply(event, "The moderation log channel has been cleared for this community.");
+    await reply(event, "The mod channel has been cleared for this community.");
     return;
   }
 
   if (args.length !== 0) {
     await reply(
       event,
-      "Usage: run !setlogchannel in the channel you want to use, or run !setlogchannel clear to remove it.",
+      "Usage: run !setmodchannel in the channel you want to use, or run !setmodchannel clear to remove it.",
     );
     return;
   }
@@ -35,12 +35,12 @@ export async function setLogChannel(
     if (!channel.channelPermission.channelCreateMessage) {
       await reply(
         event,
-        "Debo cannot post in this channel, so it cannot be used for moderation logs.",
+        "Debo cannot post in this channel, so it cannot be used as the mod channel.",
       );
       return;
     }
   } catch (error: unknown) {
-    console.error("Could not validate the requested moderation log channel:", error);
+    console.error("Could not validate the requested mod channel:", error);
     await reply(
       event,
       "Debo could not validate this channel. Try the command again in a text channel Debo can access.",
@@ -51,6 +51,6 @@ export async function setLogChannel(
   await setLogChannelId(event.channelId);
   await reply(
     event,
-    "This channel is now Debo's moderation log channel for this community.",
+    "This channel is now Debo's mod channel for moderation logs and reports.",
   );
 }

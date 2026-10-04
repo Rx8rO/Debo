@@ -5,6 +5,7 @@ import {
 import { getMentionedUser, joinTokenText } from "../command-helpers";
 import { reply, safeInlineText } from "../common";
 import { getLogChannelOrReply, logActionAndReply } from "../logging";
+import { saveBanRecord } from "../storage";
 import { CommandToken } from "../types";
 
 export async function banMember(
@@ -28,10 +29,25 @@ export async function banMember(
   const logChannelId = await getLogChannelOrReply(event);
   if (!logChannelId) return;
 
-  await rootServer.community.communityMemberBans.create({
+  const ban = await rootServer.community.communityMemberBans.create({
     userId: target.userId,
     reason,
   });
+  const issuedAt = new Date().toISOString();
+
+  try {
+    await saveBanRecord({
+      banId: ban.id,
+      userId: target.userId,
+      issuedAt,
+      reason,
+      moderatorId: event.userId,
+      targetName: target.displayName,
+    });
+  } catch (error: unknown) {
+    // The Root ban already succeeded; keep logging it even if local metadata fails.
+    console.error("The ban succeeded, but Debo could not save its date metadata:", error);
+  }
 
   await logActionAndReply(
     event,
@@ -42,6 +58,6 @@ export async function banMember(
       targetName: target.displayName,
       reason,
     },
-    `Banned ${safeTargetName}.`,
+    `Banned ${safeTargetName} (user ID: ${target.userId}).`,
   );
 }

@@ -5,6 +5,7 @@ import {
 import {
   getCommunityMemberName,
   reply,
+  replyUnlessInChannel,
   rootUserMention,
 } from "../common";
 import { postTextToLogChannel } from "../logging";
@@ -15,6 +16,8 @@ const HELP_TEXT = [
   "!kick @user [reason] — remove a member without banning them; reason is optional.",
   "!kick vc @user — remove a member from active voice channels Debo can access.",
   "!ban @user reason — permanently ban a member; reason is required.",
+  "!unban userID — unban the active ban for a Root user ID (parentheses are optional).",
+  "!bans — list currently banned users, user IDs, reasons, and ban dates when available.",
   "!purge count — delete up to 100 recent messages before this command.",
   "!purge @user count — delete up to 100 messages by that member, scanning older history as needed.",
   "!warn @user reason — save a dated warning; reason is required.",
@@ -22,8 +25,8 @@ const HELP_TEXT = [
   "!warn remove @user number — remove the numbered warning shown in the history.",
   "!role add @user role-name-or-mention — add a role.",
   "!role remove @user role-name-or-mention — remove a role.",
-  "!setlogchannel — set this channel for kick/ban/role logs and warning-list results.",
-  "!setlogchannel clear — remove this community's configured moderation log channel.",
+  "!setmodchannel — set this channel for moderation logs and reports.",
+  "!setmodchannel clear — remove this community's configured mod channel.",
   "!help — show this command list.",
 ].join("\n");
 
@@ -32,28 +35,32 @@ export async function showModerationHelp(
 ): Promise<void> {
   const requesterName = await getCommunityMemberName(event.userId);
   const requester = rootUserMention(event.userId, requesterName);
-  const logChannelId = await getLogChannelId();
+  const modChannelId = await getLogChannelId();
 
-  if (logChannelId) {
+  if (modChannelId) {
     try {
       const channel = await rootServer.community.channels.get({
-        id: logChannelId,
+        id: modChannelId,
       });
       if (channel.channelPermission.channelCreateMessage) {
         await postTextToLogChannel(
-          logChannelId,
+          modChannelId,
           `Help requested by ${requester}\n\n${HELP_TEXT}`,
         );
-        await reply(event, "I posted the command list in the moderation log channel.");
+        await replyUnlessInChannel(
+          event,
+          modChannelId,
+          "I posted the command list in the mod channel.",
+        );
         return;
       }
     } catch (error: unknown) {
-      console.error("Could not send the help list to the moderation log channel:", error);
+      console.error("Could not send the help list to the mod channel:", error);
     }
   }
 
   await reply(
     event,
-    `I could not access a configured moderation log channel, so here is the command list instead.\n\n${HELP_TEXT}`,
+    `I could not access a configured mod channel, so here is the command list instead.\n\n${HELP_TEXT}`,
   );
 }
