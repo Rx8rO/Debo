@@ -9,7 +9,6 @@ Use a Root user mention for `@user` and either an exact role name or a Root role
 | Command | Behavior |
 | --- | --- |
 | `!kick @user [reason]` | Kicks without creating a ban; reason is optional. |
-| `!kick vc @user` | Finds the member in voice channels Debo can access, then kicks them from those voice sessions. |
 | `!ban @user reason` | Creates a permanent ban; a reason is required. The moderation log includes the user's Root ID. |
 | `!unban userID` | Removes an active ban by the user's Root ID. Parentheses are also accepted: `!unban (userID)`. |
 | `!bans` | Lists active bans in the mod channel, including user IDs and reasons. Dates are shown when Debo has recorded them. |
@@ -49,14 +48,14 @@ Root's Bot SDK does not expose a direct-message channel for sending a full help 
 
    If you already ran `npm.cmd install` in this same project folder, and `package.json` has not changed, skip it on later updates and just run `npm.cmd run build`. This update adds no dependencies.
 
-2. Install/update Debo to manifest version **1.4.0** and approve the new community `manageBans` permission; `!bans` and `!unban` need it. Then open Debo's **Global Settings** and select one role in **Admin Role**. Members need that role to run moderation commands. This setting only gates Debo's commands; it does not grant additional Root permissions. If the setting is missing, commands fail closed.
+2. Install/update Debo to manifest version **1.4.1** and approve the new community `manageBans` permission; `!bans` and `!unban` need it. Then open Debo's **Global Settings** and select one role in **Admin Role**. Members need that role to run moderation commands. This setting only gates Debo's commands; it does not grant additional Root permissions. If the setting is missing, commands fail closed.
 3. In the channel you want to use for moderation logs and reports, an authorized moderator runs:
 
    ```text
    !setmodchannel
    ```
 
-   The saved destination is retained from earlier versions of Debo. Root's current Global Settings docs say the client does not render a channel-picker control, so Debo uses this command rather than relying on an unrendered Global Settings dropdown. Make sure Debo can access and post in the mod channel. `!kick vc` scans voice channels Debo can see and also tracks live voice join/leave events. To kick in a particular channel, Root must still grant Debo visibility and the channel-level `voiceKick` permission there; access-rule overlays can remove declared channel permissions. Sessions that were already active before Debo started may need the member to reconnect before an otherwise hidden channel can be detected.
+   The saved destination is retained from earlier versions of Debo. Root's current Global Settings docs say the client does not render a channel-picker control, so Debo uses this command rather than relying on an unrendered Global Settings dropdown. Make sure Debo can access and post in the mod channel.
 4. Run `!help` in Root to see the command list.
 
 ## Local development and permissions
@@ -73,7 +72,7 @@ Start the local DevHost with:
 npm.cmd run bot
 ```
 
-The manifest requests the narrow permissions this feature set needs: community `kick`, `createBan`, `manageBans`, and `manageRoles`; channel `createMessage`, `deleteMessageOther`, `viewMessageHistory`, and `voiceKick`. `manageBans` is needed to list and remove bans.
+The manifest requests the narrow permissions this feature set needs: community `kick`, `createBan`, `manageBans`, and `manageRoles`; channel `createMessage`, `deleteMessageOther`, and `viewMessageHistory`. `manageBans` is needed to list and remove bans.
 
 For the local DevHost test only, Root's tutorial says its bot inherits permissions from `EVERYONE` and recommends **Community Full Control** on that role as a testing workaround. Keep that broad setting only in an isolated test community such as `Debo-Test`; never ask a real community to grant Full Control to `EVERYONE`. Our test also showed the manifest permission request alone was not effective in the current local DevHost setup. Before publishing, the approved install/update flow still needs to be verified so real communities can grant the declared narrow permissions instead.
 

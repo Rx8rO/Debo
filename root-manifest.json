@@ -1,6 +1,6 @@
 {
   "id": "ADGo9KrlgAmEqm3aTHZIpA",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "package": {
     "server": {
       "launch": "dist/main.js",
@@ -40,8 +40,7 @@
     "channel": {
       "createMessage": true,
       "deleteMessageOther": true,
-      "viewMessageHistory": true,
-      "voiceKick": true
+      "viewMessageHistory": true
     }
   }
 }

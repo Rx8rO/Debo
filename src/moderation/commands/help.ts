@@ -14,7 +14,6 @@ import { getLogChannelId } from "../storage";
 const HELP_TEXT = [
   "**Debo moderation commands**",
   "!kick @user [reason] — remove a member without banning them; reason is optional.",
-  "!kick vc @user — remove a member from active voice channels Debo can access.",
   "!ban @user reason — permanently ban a member; reason is required.",
   "!unban userID — unban the active ban for a Root user ID (parentheses are optional).",
   "!bans — list currently banned users, user IDs, reasons, and ban dates when available.",
