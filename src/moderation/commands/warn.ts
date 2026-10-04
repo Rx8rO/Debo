@@ -1,6 +1,7 @@
 import { ChannelMessageCreatedEvent } from "@rootsdk/server-bot";
 import { getMentionedUser, joinTokenText } from "../command-helpers";
 import { reply, safeInlineText } from "../common";
+import { getActionLogChannelOrReply, logActionAndReply } from "../logging";
 import { addWarning, removeWarning } from "../storage";
 import { CommandToken } from "../types";
 
@@ -23,6 +24,9 @@ export async function manageWarning(
   }
 
   const safeTargetName = safeInlineText(target.displayName, 100);
+  const logChannelId = await getActionLogChannelOrReply(event);
+  if (!logChannelId) return;
+
   const warningNumber = await addWarning(target.userId, {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
     issuedAt: new Date().toISOString(),
@@ -31,8 +35,15 @@ export async function manageWarning(
     targetName: target.displayName,
   });
 
-  await reply(
+  await logActionAndReply(
     event,
+    logChannelId,
+    {
+      action: "Warning issued",
+      targetUserId: target.userId,
+      targetName: target.displayName,
+      reason,
+    },
     `Saved warning #${warningNumber} for ${safeTargetName}. Use !warnings @user to view the history.`,
   );
 }
@@ -61,6 +72,9 @@ async function removeMemberWarning(
   }
 
   const safeTargetName = safeInlineText(target.displayName, 100);
+  const logChannelId = await getActionLogChannelOrReply(event);
+  if (!logChannelId) return;
+
   const removed = await removeWarning(target.userId, warningNumber);
   if (!removed) {
     await reply(
@@ -70,8 +84,16 @@ async function removeMemberWarning(
     return;
   }
 
-  await reply(
+  await logActionAndReply(
     event,
+    logChannelId,
+    {
+      action: "Warning removed",
+      targetUserId: target.userId,
+      targetName: target.displayName,
+      reason: removed.reason,
+      details: `Removed warning #${warningNumber}, originally issued ${removed.issuedAt}`,
+    },
     `Removed warning #${warningNumber} for ${safeTargetName}. Remaining warnings are renumbered when displayed.`,
   );
 }

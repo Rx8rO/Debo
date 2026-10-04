@@ -4,7 +4,7 @@ import {
   MessageType,
   rootServer,
 } from "@rootsdk/server-bot";
-import { checkModeratorRole } from "./moderation/access";
+import { checkModeratorRole, checkOwner } from "./moderation/access";
 import { initializeBanTracking } from "./moderation/ban-tracking";
 import { banMember } from "./moderation/commands/ban";
 import { showBans } from "./moderation/commands/bans";
@@ -16,13 +16,21 @@ import { kickMember } from "./moderation/commands/kick";
 import { purgeMessages } from "./moderation/commands/purge";
 import { changeMemberRole } from "./moderation/commands/role";
 import { showRoles } from "./moderation/commands/roles";
-import { setModChannel } from "./moderation/commands/set-log-channel";
+import { setLogChannel } from "./moderation/commands/set-log-channel";
+import { setModChannel } from "./moderation/commands/set-mod-channel";
 import { unbanMember } from "./moderation/commands/unban";
 import { manageWarning } from "./moderation/commands/warn";
 import { showWarnings } from "./moderation/commands/warnings";
 import { describeError, reply } from "./moderation/common";
 import { parseCommand } from "./moderation/parser";
 import { CommandContext, ModerationCommand } from "./moderation/types";
+
+const OWNER_ONLY_COMMANDS = new Set([
+  "ban",
+  "unban",
+  "setmodchannel",
+  "setlogchannel",
+]);
 
 const commands = new Map<string, ModerationCommand>([
   ["ban", (context, args) => banMember(context.event, args)],
@@ -34,8 +42,7 @@ const commands = new Map<string, ModerationCommand>([
   ["role", (context, args) => changeMemberRole(context.event, args)],
   ["roles", (context, args) => showRoles(context.event, args)],
   ["setmodchannel", (context, args) => setModChannel(context.event, args)],
-  // Preserve the old command as an alias so existing moderators aren't caught out.
-  ["setlogchannel", (context, args) => setModChannel(context.event, args)],
+  ["setlogchannel", (context, args) => setLogChannel(context.event, args)],
   ["unban", (context, args) => unbanMember(context.event, args)],
   ["warn", (context, args) => manageWarning(context.event, args)],
   ["warnings", (context, args) => showWarnings(context.event, args)],
@@ -58,12 +65,19 @@ async function onMessage(event: ChannelMessageCreatedEvent): Promise<void> {
   const handler = commands.get(parsed.name);
   if (!handler) return;
 
-  // Public help is open to everyone; every other moderation command, including
-  // !modhelp, is protected by the selected Admin Role.
+  // Public help is open to everyone. Owner-only actions bypass the Admin Role
+  // check but fail closed unless the single Owner member is configured.
   if (parsed.name !== "help") {
-    const authorization = await checkModeratorRole(event.userId);
+    const ownerOnly = OWNER_ONLY_COMMANDS.has(parsed.name);
+    const authorization = ownerOnly
+      ? await checkOwner(event.userId)
+      : await checkModeratorRole(event.userId);
     if (!authorization.allowed) {
-      await reply(event, "You are not an admin meow 🐾", 5_000);
+      await reply(
+        event,
+        ownerOnly ? "You are not the owner meow 🐾" : "You are not an admin meow 🐾",
+        5_000,
+      );
       return;
     }
   }

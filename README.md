@@ -1,6 +1,6 @@
 # Debo — Root Moderation and Automation Bot
 
-Debo provides community-configurable moderation, leveling, and anti-spam features. Each community selects its own **Admin Role** in Global Settings; moderation commands and automation settings are checked against that role. Public rank lookups are available to everyone. XP, spam settings, and active spam timeouts are stored with a community-specific key in Root `appData` and survive bot restarts.
+Debo provides community-configurable moderation, leveling, and anti-spam features. Each community selects an **Admin Role** and one **Owner** member in Global Settings. Admin Role members can use normal moderator commands; only the selected Owner can use the high-impact ban, channel-setup, spam-configuration, and leveling-configuration commands. Public rank lookups are available to everyone. XP, channel settings, spam settings, and active spam timeouts are stored in Root `appData` and survive bot restarts.
 
 ## Commands
 
@@ -14,59 +14,61 @@ Use a Root user mention for `@user` and either an exact role name or a Root role
 | `!ranks10` | Everyone | Shows up to the top 10 members with their level and XP. |
 | `!level` | Everyone | Shows your level only. |
 | `!level @user` | Everyone | Shows the mentioned member's level only. |
-| `!levelconfig` | Admin Role | Shows the current random XP range, cooldown, and reward settings. |
-| `!levelconfig xp min max` | Admin Role | Sets the inclusive random XP range per eligible message (each value 1–10,000). |
-| `!levelconfig cooldown seconds` | Admin Role | Sets the per-member XP cooldown (0–86,400 seconds; 0 means no cooldown). |
-| `!levelconfig reward add level @role` | Admin Role | Adds a role to grant when a member reaches that level (1–1,000). |
-| `!levelconfig reward list` | Admin Role | Lists all configured level reward roles. |
-| `!levelconfig reward remove level @role` | Admin Role | Removes a role from the reward list for that level. |
-| `!levelconfig reward clear level` | Admin Role | Clears all configured rewards for that level. |
+| `!levelconfig` | Owner | Shows the current random XP range, cooldown, and reward settings. |
+| `!levelconfig xp min max` | Owner | Sets the inclusive random XP range per eligible message (each value 1–10,000). |
+| `!levelconfig cooldown seconds` | Owner | Sets the per-member XP cooldown (0–86,400 seconds; 0 means no cooldown). |
+| `!levelconfig reward add level @role` | Owner | Adds a role to grant when a member reaches that level (1–1,000). |
+| `!levelconfig reward list` | Owner | Lists all configured level reward roles. |
+| `!levelconfig reward remove level @role` | Owner | Removes a role from the reward list for that level. |
+| `!levelconfig reward clear level` | Owner | Clears all configured rewards for that level. |
 | `!xp add amount @user` | Admin Role | Adds XP to a member (1–1,000,000 XP per command) and applies any newly reached reward roles. |
 | `!levelreset @user` | Admin Role | Resets a member's XP to 0 (level 1); already-earned roles are not removed. |
-| `!spamconfig` | Admin Role | Shows the current spam limits and timeout setup. |
-| `!spamconfig limit messages` | Admin Role | Sets how many messages are allowed in the configured time window (1–1,000). Messages above the limit are deleted. |
-| `!spamconfig window seconds` | Admin Role | Sets the rolling spam window (0.1–60 seconds; decimals are allowed). |
-| `!spamconfig timeout seconds` | Admin Role | Sets the post-trigger suppression period (0–86,400 seconds; 0 disables the extra timeout). |
-| `!kick @user [reason]` | Admin Role | Kicks without creating a ban; reason is optional. |
-| `!ban @user reason` | Admin Role | Creates a permanent ban; a reason is required. The moderation log includes the user's Root ID. |
-| `!unban userID` | Admin Role | Removes an active ban by the user's Root ID. Parentheses are also accepted: `!unban (userID)`. |
-| `!bans` | Admin Role | Lists active bans in the mod channel, including user IDs and reasons. Dates are shown when Debo has recorded them. |
+| `!spamconfig` | Owner | Shows the current spam limits and timeout setup. |
+| `!spamconfig limit messages` | Owner | Sets how many messages are allowed in the configured time window (1–1,000). Messages above the limit are deleted. |
+| `!spamconfig window seconds` | Owner | Sets the rolling spam window (0.1–60 seconds; decimals are allowed). |
+| `!spamconfig timeout seconds` | Owner | Sets the post-trigger suppression period (0–86,400 seconds; 0 disables the extra timeout). |
+| `!kick @user [reason]` | Admin Role | Kicks without creating a ban; reason is optional and the action is logged in the Logs channel. |
+| `!ban @user reason` | Owner | Creates a permanent ban; a reason is required and the action is logged in the Logs channel. |
+| `!unban userID` | Owner | Removes an active ban by the user's Root ID and logs the action. Parentheses are also accepted: `!unban (userID)`. |
+| `!bans` | Admin Role | Posts active-ban details in the Mod channel. |
 | `!purge count` | Admin Role | Deletes up to 100 messages before the command in the current channel. |
 | `!purge @user count` | Admin Role | Deletes up to 100 messages by that member, paging older history until it finds enough or reaches the beginning. |
-| `!warn @user reason` | Admin Role | Saves a warning with its UTC date, reason, and moderator. Does not create a moderation log entry. |
-| `!warnings` | Admin Role | Posts a warning count for each warned member in the mod channel. The report stays there. |
-| `!warnings @user` | Admin Role | Posts that member's numbered warning history, dates, and reasons in the mod channel. The report stays there. |
-| `!warn remove @user number` | Admin Role | Removes the numbered warning shown by `!warnings @user`. |
-| `!role add @user role-name-or-mention` | Admin Role | Adds the named/mentioned role and logs the change. |
-| `!role remove @user role-name-or-mention` | Admin Role | Removes the named/mentioned role and logs the change. |
-| `!roles` | Admin Role | Lists all community roles and their Root IDs in the mod channel. |
-| `!setmodchannel` | Admin Role | Sets the channel where this command is run as this community's mod channel. |
-| `!setmodchannel clear` | Admin Role | Clears the configured mod channel. |
+| `!warn @user reason` | Admin Role | Saves a warning with its UTC date, reason, and moderator; logs it in the Logs channel. |
+| `!warnings` | Admin Role | Posts warning totals in the Mod channel. |
+| `!warnings @user` | Admin Role | Posts that member's numbered warning history in the Mod channel. |
+| `!warn remove @user number` | Admin Role | Removes the numbered warning and logs the action in the Logs channel. |
+| `!role add @user role-name-or-mention` | Admin Role | Adds the named/mentioned role and logs the change in the Logs channel. |
+| `!role remove @user role-name-or-mention` | Admin Role | Removes the named/mentioned role and logs the change in the Logs channel. |
+| `!roles` | Admin Role | Lists all community roles and their Root IDs in the Mod channel. |
+| `!setmodchannel` | Owner | Sets the private Mod channel where reports and `!modhelp` are posted. |
+| `!setmodchannel clear` | Owner | Clears the configured Mod channel. |
+| `!setlogchannel` | Owner | Sets the separate Logs channel for moderation actions. |
+| `!setlogchannel clear` | Owner | Clears the configured Logs channel. |
 | `!help` | Everyone | Shows only commands available to everyone in the current channel. |
-| `!modhelp` | Admin Role | Posts the full command list in the configured mod channel. |
+| `!modhelp` | Admin Role | Posts the full command list in the configured Mod channel. |
 
-`!setlogchannel` remains as a compatibility alias for `!setmodchannel`, so existing setup commands still work. Every command message is excluded from XP.
+Every command message is excluded from XP.
 
 ## Leveling and spam protection
 
 - A non-command member message in a community can earn XP, subject to the per-member cooldown. Defaults are a **random 5–10 XP per eligible message** and a **60-second cooldown**. Set the inclusive XP range with `!levelconfig xp min max`.
 - Members start at **Level 1 with 0 XP**. Reaching Level 2 takes 100 XP; each later level requires 100 more XP than the previous level. Existing XP totals are not reset by the level-number change. `!rank` shows only rank, level, and XP; `!level` shows only the level. `!ranks` and `!ranks10` show up to the top 5 and top 10 XP earners, respectively.
-- All level rewards are configured with admin-only commands, not Global Settings. For example, `!levelconfig reward add 2 @Level2Role` and `!levelconfig reward add 5 @Level5Role` assign different roles at Levels 2 and 5. Use `reward list`, `reward remove`, and `reward clear` to manage mappings; they are saved per community. Existing command-configured mappings are migrated automatically. If you previously selected a role only in the removed Global Settings picker, add it again with `!levelconfig reward add <level> @role`. Members receive a congratulations message when Debo successfully grants them a reward role. Removing a mapping does not strip roles already awarded.
+- All level rewards are configured with Owner-only commands, not Global Settings. For example, `!levelconfig reward add 2 @Level2Role` and `!levelconfig reward add 5 @Level5Role` assign different roles at Levels 2 and 5. Use `reward list`, `reward remove`, and `reward clear` to manage mappings; they are saved per community. Existing command-configured mappings are migrated automatically. If you previously selected a role only in the removed Global Settings picker, add it again with `!levelconfig reward add <level> @role`. Members receive a congratulations message when Debo successfully grants them a reward role. Removing a mapping does not strip roles already awarded.
 - Spam protection counts each member's messages across the community over a rolling time window. By default, the first **5 messages per 1 second** are allowed; the 6th and later messages in that window are deleted. Configure the count and window with `!spamconfig limit` and `!spamconfig window`.
 - The default additional spam timeout is **10 seconds**. Root's Bot SDK does not expose a direct text-chat timeout endpoint. Select an optional **Spam Timeout Role** in **Global Settings → Automation**, then configure that role to deny sending messages in the channels you want protected. Debo applies the role temporarily and removes it when the timeout ends. If no role is selected (or Root cannot apply it), Debo still deletes that member's messages for the timeout period, but Root will not stop them from attempting to send messages. Role permissions must be configured separately; selecting the role does not configure channel permissions.
 - If a member already had the timeout role before the spam trigger, Debo leaves it in place rather than removing a role it did not add. Active timeout records are restored after a Debo restart.
 
-All numeric configuration commands require the configured **Admin Role** and fail closed if no Admin Role is selected or its membership cannot be verified. Non-admin command replies say “You are not an admin meow 🐾” and disappear after 5 seconds. The role pickers are optional. Numeric values are set with commands because Root's current clients do not render editable numeric Global Settings controls.
+`!levelconfig` and `!spamconfig` require the single member selected as **Owner** in Global Settings; they fail closed if Owner is unset or cannot be matched. `!ban`, `!unban`, `!setmodchannel`, and `!setlogchannel` are also Owner-only. Other moderator commands, including `!modhelp`, `!warn`, `!kick`, `!xp add`, and `!levelreset`, continue to require the configured **Admin Role**. Permission-denial replies disappear after 5 seconds. Numeric values are set with commands because Root's current clients do not render editable numeric Global Settings controls.
 
 `!purge` does not count or delete its own command message. Targeted purge uses Root message-history pagination and Root GUID timestamps; it has no arbitrary age cutoff. Deleting 100 messages is paced to stay under Root's approximate API rate limit, so a full purge can take a short while.
 
-`!warnings`, `!bans`, and `!roles` reports are persistent messages in the mod channel. Admin-only `!modhelp` also posts the complete command list there; when used elsewhere, Debo sends a brief confirmation that is deleted after 15 seconds. `!help` is public and responds in the channel where it was used with only public commands. The original command messages are not deleted. Reports mention who requested them. `!warn` and `!warn remove` do not create logs.
+The **Mod channel** is reserved for private reports: `!warnings`, `!bans`, `!roles`, and the Admin Role-only `!modhelp` report there. If `!modhelp` is used elsewhere, Debo sends a brief confirmation that is deleted after 15 seconds. The separate **Logs channel** receives action logs for `!ban`, `!unban`, `!kick`, `!warn`/`!warn remove`, and role changes. `!help` is public and responds in the channel where it was used with only public commands. Original command messages are not deleted.
 
 `!bans` reads Root's current active-ban list, so a successful `!unban userID` removes that user from the next list. Debo stores ban dates for bans it creates and for new ban events it observes while running. Root's current Ban API response does not include a creation date, so older bans (or bans created while Debo was offline) remain listed with their IDs/reasons but display the date as unavailable. Their reasons are displayed when Root provides one.
 
-Warning records, Debo-tracked ban dates, and the mod-channel choice are stored per community and survive bot restarts. Dates are displayed in UTC. In DevHost, deleting `rootsdk.sqlite3` resets this local data too, including warnings, tracked ban dates, the saved mod channel, automation settings, XP, and active timeout records; do not delete it unless you intend to clear those records.
+Warning records, Debo-tracked ban dates, and the Mod and Logs channel choices are stored per community and survive bot restarts. Dates are displayed in UTC. The old shared-channel setting is kept as a fallback for the Mod channel, so existing `!warnings`, `!bans`, `!roles`, and `!modhelp` reports keep their destination. Configure a separate Logs channel with `!setlogchannel`. In DevHost, deleting `rootsdk.sqlite3` resets this local data too; do not delete it unless you intend to clear those records.
 
-`!help` posts the public command list in the channel where it is used. Admin-only `!modhelp` posts the complete command list in the configured mod channel and never falls back to posting admin commands in a public channel. If the mod channel is missing or inaccessible, Debo tells the admin how to fix the setup.
+`!help` posts the public command list in the channel where it is used. Admin Role-only `!modhelp` posts the complete command list in the configured Mod channel and never falls back to posting admin commands in a public channel. If the Mod channel is missing or inaccessible, Debo tells the admin how to fix the setup.
 
 ## Community setup
 
@@ -79,16 +81,10 @@ Warning records, Debo-tracked ban dates, and the mod-channel choice are stored p
 
    If you already ran `npm.cmd install` in this same project folder, and `package.json` has not changed, skip it on later updates and just run `npm.cmd run build`. This update adds no dependencies.
 
-2. Install/update Debo to manifest version **1.8.0**. Keep the requested permissions enabled: community `kick`, `createBan`, `manageBans`, and `manageRoles`; channel `createMessage`, `deleteMessageOther`, and `viewMessageHistory`. Open Debo's **Global Settings** and select one role in **Admin Role**. Members need that role to use moderation and numeric configuration commands. This setting only gates Debo's commands; it does not grant additional Root permissions. If it is missing, those commands fail closed.
+2. Install/update Debo to manifest version **1.9.0**. Keep the requested permissions enabled: community `kick`, `createBan`, `manageBans`, and `manageRoles`; channel `createMessage`, `deleteMessageOther`, and `viewMessageHistory`. Open Debo's **Global Settings** and select one role in **Admin Role** plus the single member in **Owner**. The Admin Role gates standard moderator commands; Owner gates the high-impact commands listed above. These settings do not grant additional Root permissions. Both checks fail closed if their setting is missing.
 3. Still in **Global Settings → Automation**, optionally select a **Spam Timeout Role**. For that role to block messages, separately configure it to deny sending messages in the channels you want protected. Level reward roles are now configured with `!levelconfig reward add`, not Global Settings. Make sure Debo can manage roles.
-4. In the channel you want to use for moderation logs and reports, an authorized moderator runs:
-
-   ```text
-   !setmodchannel
-   ```
-
-   The saved destination is retained from earlier versions of Debo. Root's current Global Settings docs say the client does not render a channel-picker control, so Debo uses this command rather than relying on an unrendered Global Settings dropdown. Make sure Debo can access and post in the mod channel.
-5. An Admin Role member can review or change defaults in any channel where Debo can reply:
+4. An Owner configures two separate channels by running `!setmodchannel` in the private channel for reports and `!modhelp`, then running `!setlogchannel` in the channel for moderation-action logs. The old shared destination is retained as the Mod channel for existing communities. Make sure Debo can access and post in both channels.
+5. Only the selected Owner can review or change XP and spam configuration values. Run these commands from a channel where Debo can reply:
 
    ```text
    !levelconfig
@@ -132,9 +128,9 @@ npm.cmd run bot
 
 ### Safe automation test in Debo-Test
 
-Use an isolated test community such as **Debo-Test**, not a real community. After building, updating the test installation, selecting an Admin Role, and starting DevHost:
+Use an isolated test community such as **Debo-Test**, not a real community. After building, updating the test installation, selecting an Admin Role and Owner, and starting DevHost:
 
-1. From an account with the Admin Role, temporarily speed up leveling:
+1. From the account selected as Owner, temporarily speed up leveling:
 
    ```text
    !levelconfig xp 100 100
@@ -144,7 +140,7 @@ Use an isolated test community such as **Debo-Test**, not a real community. Afte
 2. Send one ordinary chat message (not a `!` command), then run `!rank`. You should have 100 XP and be level 2.
 3. To test an additional level reward, run `!levelconfig reward add 3 @role` using a test role mention, then send two more ordinary messages. At 300 XP you should reach level 3 and receive that role. Check the saved mapping with `!levelconfig reward list`.
 4. Test another member's public lookup with `!rank @user`. Try the admin XP commands on a test member with `!xp add 50 @user`, then `!levelreset @user`; rank should return to level 1 with 0 XP.
-5. Test spam deletion with:
+5. As the configured Owner, test spam deletion with:
 
    ```text
    !spamconfig limit 5

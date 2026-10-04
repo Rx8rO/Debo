@@ -4,7 +4,7 @@ import {
 } from "@rootsdk/server-bot";
 import { getMentionedUser, resolveRole } from "../command-helpers";
 import { reply, safeInlineText } from "../common";
-import { getLogChannelOrReply, logActionAndReply } from "../logging";
+import { getActionLogChannelOrReply, logActionAndReply } from "../logging";
 import { CommandToken } from "../types";
 
 export async function changeMemberRole(
@@ -43,7 +43,7 @@ export async function changeMemberRole(
 
   const safeTargetName = safeInlineText(target.displayName, 100);
   const safeRoleName = safeInlineText(role.roleName, 100);
-  const logChannelId = await getLogChannelOrReply(event);
+  const logChannelId = await getActionLogChannelOrReply(event);
   if (!logChannelId) return;
 
   if (operation === "add") {

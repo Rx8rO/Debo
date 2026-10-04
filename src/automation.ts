@@ -8,7 +8,7 @@ import {
   rootServer,
   UserGuid,
 } from "@rootsdk/server-bot";
-import { checkModeratorRole } from "./moderation/access";
+import { checkModeratorRole, checkOwner } from "./moderation/access";
 import {
   describeError,
   getCommunityMemberName,
@@ -717,7 +717,7 @@ async function configureLeveling(
   event: ChannelMessageCreatedEvent,
   args: CommandToken[],
 ): Promise<void> {
-  if (!(await requireAutomationAdmin(event))) return;
+  if (!(await requireAutomationOwner(event))) return;
   if (args.length === 0) {
     await reply(event, formatLevelingConfig(configCache));
     return;
@@ -911,7 +911,7 @@ async function configureSpam(
   event: ChannelMessageCreatedEvent,
   args: CommandToken[],
 ): Promise<void> {
-  if (!(await requireAutomationAdmin(event))) return;
+  if (!(await requireAutomationOwner(event))) return;
   if (args.length === 0) {
     await reply(event, formatSpamConfig(configCache));
     return;
@@ -1040,6 +1040,16 @@ async function resetMemberLevel(
     event,
     `Reset ${rootUserMention(target.userId, target.displayName)} to level 1 with 0 XP. This does not remove roles they already earned.`,
   );
+}
+
+async function requireAutomationOwner(
+  event: ChannelMessageCreatedEvent,
+): Promise<boolean> {
+  const authorization = await checkOwner(event.userId);
+  if (authorization.allowed) return true;
+
+  await reply(event, "You are not the owner meow 🐾", 5_000);
+  return false;
 }
 
 async function requireAutomationAdmin(

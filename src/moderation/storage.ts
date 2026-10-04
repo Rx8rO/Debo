@@ -5,9 +5,11 @@ import {
   UserGuid,
 } from "@rootsdk/server-bot";
 
-// Keep the v1 key so existing communities retain their configured destination
-// when the user-facing command is renamed from !setlogchannel to !setmodchannel.
-const LOG_CHANNEL_KEY = "moderation:log-channel:v1";
+// The old shared channel key becomes a legacy mod-channel fallback so existing
+// communities keep private reports where they were already configured.
+const LEGACY_SHARED_CHANNEL_KEY = "moderation:log-channel:v1";
+const MOD_CHANNEL_KEY = "moderation:mod-channel:v1";
+const ACTION_LOG_CHANNEL_KEY = "moderation:action-log-channel:v1";
 const WARNINGS_KEY = "moderation:warnings:v1";
 const BANS_KEY = "moderation:bans:v1";
 
@@ -32,19 +34,43 @@ export type StoredBan = {
 
 export type BanArchive = Record<string, StoredBan>;
 
+export async function getModChannelId(): Promise<ChannelGuid | undefined> {
+  const configuredChannel = await rootServer.dataStore.appData.get<ChannelGuid>(
+    MOD_CHANNEL_KEY,
+  );
+  if (configuredChannel) return configuredChannel;
+
+  // Older versions used one channel for both private reports and action logs.
+  return rootServer.dataStore.appData.get<ChannelGuid>(
+    LEGACY_SHARED_CHANNEL_KEY,
+  );
+}
+
+export async function setModChannelId(channelId: ChannelGuid): Promise<void> {
+  await rootServer.dataStore.appData.set<ChannelGuid>({
+    key: MOD_CHANNEL_KEY,
+    value: channelId,
+  });
+}
+
+export async function clearModChannelId(): Promise<void> {
+  await rootServer.dataStore.appData.delete(MOD_CHANNEL_KEY);
+  await rootServer.dataStore.appData.delete(LEGACY_SHARED_CHANNEL_KEY);
+}
+
 export async function getLogChannelId(): Promise<ChannelGuid | undefined> {
-  return rootServer.dataStore.appData.get<ChannelGuid>(LOG_CHANNEL_KEY);
+  return rootServer.dataStore.appData.get<ChannelGuid>(ACTION_LOG_CHANNEL_KEY);
 }
 
 export async function setLogChannelId(channelId: ChannelGuid): Promise<void> {
   await rootServer.dataStore.appData.set<ChannelGuid>({
-    key: LOG_CHANNEL_KEY,
+    key: ACTION_LOG_CHANNEL_KEY,
     value: channelId,
   });
 }
 
 export async function clearLogChannelId(): Promise<void> {
-  await rootServer.dataStore.appData.delete(LOG_CHANNEL_KEY);
+  await rootServer.dataStore.appData.delete(ACTION_LOG_CHANNEL_KEY);
 }
 
 export async function getWarningArchive(): Promise<WarningArchive> {

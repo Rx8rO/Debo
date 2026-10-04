@@ -5,7 +5,7 @@ import {
   UserGuid,
 } from "@rootsdk/server-bot";
 import { reply, safeInlineText, sleep } from "./common";
-import { getLogChannelId } from "./storage";
+import { getLogChannelId, getModChannelId } from "./storage";
 
 export type ModerationLogEntry = {
   action: string;
@@ -15,16 +15,36 @@ export type ModerationLogEntry = {
   details?: string;
 };
 
-export async function getLogChannelOrReply(
+export async function getActionLogChannelOrReply(
   event: ChannelMessageCreatedEvent,
 ): Promise<ChannelGuid | undefined> {
-  const channelId = await getLogChannelId();
+  return validateConfiguredChannel(
+    event,
+    await getLogChannelId(),
+    "logs channel",
+    "!setlogchannel",
+  );
+}
 
+export async function getModChannelOrReply(
+  event: ChannelMessageCreatedEvent,
+): Promise<ChannelGuid | undefined> {
+  return validateConfiguredChannel(
+    event,
+    await getModChannelId(),
+    "mod channel",
+    "!setmodchannel",
+  );
+}
+
+async function validateConfiguredChannel(
+  event: ChannelMessageCreatedEvent,
+  channelId: ChannelGuid | undefined,
+  label: string,
+  command: string,
+): Promise<ChannelGuid | undefined> {
   if (!channelId) {
-    await reply(
-      event,
-      "The mod channel is not set. Run !setmodchannel in the channel you want to use.",
-    );
+    await reply(event, `The ${label} is not set. The configured Owner can run ${command} in the channel you want to use.`);
     return undefined;
   }
 
@@ -33,16 +53,16 @@ export async function getLogChannelOrReply(
     if (!channel.channelPermission.channelCreateMessage) {
       await reply(
         event,
-        "Debo cannot post in the configured mod channel. Give Debo access to send messages there, then run !setmodchannel again.",
+        `Debo cannot post in the configured ${label}. Give Debo access to send messages there, then run ${command} again.`,
       );
       return undefined;
     }
     return channelId;
   } catch (error: unknown) {
-    console.error("The configured moderation log channel is unavailable:", error);
+    console.error(`The configured ${label} is unavailable:`, error);
     await reply(
       event,
-      "I cannot access the configured mod channel. Run !setmodchannel again in a channel Debo can access, and make sure Debo can post there.",
+      `I cannot access the configured ${label}. Run ${command} again in a channel Debo can access, and make sure Debo can post there.`,
     );
     return undefined;
   }
@@ -98,12 +118,12 @@ export async function logActionAndReply(
     console.error("The moderation action succeeded, but its log could not be sent:", error);
     await reply(
       event,
-      `${successMessage} Warning: I could not post the log in the configured mod channel. Check Debo's access there.`,
+      `${successMessage} Warning: I could not post the log in the configured logs channel. Check Debo's access there.`,
     );
   }
 }
 
-export async function postTextToLogChannel(
+export async function postTextToChannel(
   channelId: ChannelGuid,
   content: string,
 ): Promise<void> {

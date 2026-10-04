@@ -10,7 +10,7 @@ import {
   rootUserMention,
   safeInlineText,
 } from "../common";
-import { getLogChannelOrReply, postTextToLogChannel } from "../logging";
+import { getModChannelOrReply, postTextToChannel } from "../logging";
 import { getBanArchive, StoredBan } from "../storage";
 import { CommandToken } from "../types";
 
@@ -23,7 +23,7 @@ export async function showBans(
     return;
   }
 
-  const modChannelId = await getLogChannelOrReply(event);
+  const modChannelId = await getModChannelOrReply(event);
   if (!modChannelId) return;
 
   const [activeBans, archive] = await Promise.all([
@@ -38,7 +38,7 @@ export async function showBans(
 
   // Ban information stays in the mod channel; a confirmation is only needed
   // when the command was issued elsewhere.
-  await postTextToLogChannel(modChannelId, content);
+  await postTextToChannel(modChannelId, content);
   await replyUnlessInChannel(
     event,
     modChannelId,

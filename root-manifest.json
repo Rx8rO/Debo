@@ -1,6 +1,6 @@
 {
   "id": "ADGo9KrlgAmEqm3aTHZIpA",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "package": {
     "server": {
       "launch": "dist/main.js",
@@ -17,11 +17,23 @@
           {
             "key": "adminRole",
             "title": "Admin Role",
-            "description": "Only members with this selected role can use Debo's moderation commands; this setting does not grant additional Root permissions.",
+            "description": "Members with this role can use Admin Role moderation commands. Public commands remain open to everyone; Owner-only commands require the selected Owner. This setting does not grant additional Root permissions.",
             "required": true,
             "confirmation": "Save",
             "roleOrMember": {
               "selectBehavior": "role",
+              "userIds": [],
+              "communityRoleIds": []
+            }
+          },
+          {
+            "key": "owner",
+            "title": "Owner",
+            "description": "Select exactly one community member who can use owner-only commands: !ban, !unban, !setmodchannel, !setlogchannel, !spamconfig, and !levelconfig. This setting does not grant additional Root permissions.",
+            "required": true,
+            "confirmation": "Save",
+            "roleOrMember": {
+              "selectBehavior": "userSingle",
               "userIds": [],
               "communityRoleIds": []
             }

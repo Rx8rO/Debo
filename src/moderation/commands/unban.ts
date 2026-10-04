@@ -8,7 +8,7 @@ import {
   reply,
   safeInlineText,
 } from "../common";
-import { getLogChannelOrReply, logActionAndReply } from "../logging";
+import { getActionLogChannelOrReply, logActionAndReply } from "../logging";
 import { getBanArchive, removeBanRecord } from "../storage";
 import { CommandToken } from "../types";
 
@@ -22,8 +22,8 @@ export async function unbanMember(
     return;
   }
 
-  const modChannelId = await getLogChannelOrReply(event);
-  if (!modChannelId) return;
+  const logChannelId = await getActionLogChannelOrReply(event);
+  if (!logChannelId) return;
 
   const activeBans = await rootServer.community.communityMemberBans.list();
   const activeBan = activeBans.find((ban) => ban.userId === userId);
@@ -52,7 +52,7 @@ export async function unbanMember(
     activeBan.reason || stored?.reason || "No reason was recorded";
   await logActionAndReply(
     event,
-    modChannelId,
+    logChannelId,
     {
       action: "Member unbanned",
       targetUserId: userId,

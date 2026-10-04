@@ -4,7 +4,7 @@ import {
 } from "@rootsdk/server-bot";
 import { getMentionedUser, joinTokenText } from "../command-helpers";
 import { reply, safeInlineText } from "../common";
-import { getLogChannelOrReply, logActionAndReply } from "../logging";
+import { getActionLogChannelOrReply, logActionAndReply } from "../logging";
 import { saveBanRecord } from "../storage";
 import { CommandToken } from "../types";
 
@@ -26,7 +26,7 @@ export async function banMember(
   }
 
   const safeTargetName = safeInlineText(target.displayName, 100);
-  const logChannelId = await getLogChannelOrReply(event);
+  const logChannelId = await getActionLogChannelOrReply(event);
   if (!logChannelId) return;
 
   const ban = await rootServer.community.communityMemberBans.create({

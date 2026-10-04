@@ -4,13 +4,13 @@ import {
 } from "@rootsdk/server-bot";
 import { reply } from "../common";
 import {
-  clearLogChannelId,
-  getModChannelId,
-  setLogChannelId,
+  clearModChannelId,
+  getLogChannelId,
+  setModChannelId,
 } from "../storage";
 import { CommandToken } from "../types";
 
-export async function setLogChannel(
+export async function setModChannel(
   event: ChannelMessageCreatedEvent,
   args: CommandToken[],
 ): Promise<void> {
@@ -19,15 +19,15 @@ export async function setLogChannel(
     typeof args[0] === "string" &&
     args[0].toLowerCase() === "clear"
   ) {
-    await clearLogChannelId();
-    await reply(event, "The logs channel has been cleared for this community.");
+    await clearModChannelId();
+    await reply(event, "The mod channel has been cleared for this community.");
     return;
   }
 
   if (args.length !== 0) {
     await reply(
       event,
-      "Usage: run !setlogchannel in the channel for action logs, or run !setlogchannel clear to remove it.",
+      "Usage: run !setmodchannel in the channel for private moderator reports, or run !setmodchannel clear to remove it.",
     );
     return;
   }
@@ -39,12 +39,12 @@ export async function setLogChannel(
     if (!channel.channelPermission.channelCreateMessage) {
       await reply(
         event,
-        "Debo cannot post in this channel, so it cannot be used as the logs channel.",
+        "Debo cannot post in this channel, so it cannot be used as the mod channel.",
       );
       return;
     }
   } catch (error: unknown) {
-    console.error("Could not validate the requested logs channel:", error);
+    console.error("Could not validate the requested mod channel:", error);
     await reply(
       event,
       "Debo could not validate this channel. Try the command again in a text channel Debo can access.",
@@ -52,14 +52,14 @@ export async function setLogChannel(
     return;
   }
 
-  if ((await getModChannelId()) === event.channelId) {
-    await reply(event, "The Logs and Mod channels must be different. Run !setlogchannel in another channel.");
+  if ((await getLogChannelId()) === event.channelId) {
+    await reply(event, "The Mod and Logs channels must be different. Run !setmodchannel in another channel.");
     return;
   }
 
-  await setLogChannelId(event.channelId);
+  await setModChannelId(event.channelId);
   await reply(
     event,
-    "This channel is now Debo's Logs channel for moderation action logs.",
+    "This channel is now Debo's private Mod channel for reports and !modhelp.",
   );
 }

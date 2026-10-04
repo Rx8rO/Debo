@@ -4,7 +4,7 @@ import {
 } from "@rootsdk/server-bot";
 import { getMentionedUser, joinTokenText } from "../command-helpers";
 import { reply, safeInlineText } from "../common";
-import { getLogChannelOrReply, logActionAndReply } from "../logging";
+import { getActionLogChannelOrReply, logActionAndReply } from "../logging";
 import { CommandToken } from "../types";
 
 export async function kickMember(
@@ -27,7 +27,7 @@ export async function kickMember(
 
   const reason = joinTokenText(args.slice(1));
   const safeTargetName = safeInlineText(target.displayName, 100);
-  const logChannelId = await getLogChannelOrReply(event);
+  const logChannelId = await getActionLogChannelOrReply(event);
   if (!logChannelId) return;
 
   await rootServer.community.communityMemberBans.kick({

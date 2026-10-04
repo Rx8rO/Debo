@@ -7,7 +7,7 @@ import {
   rootUserMention,
   safeInlineText,
 } from "../common";
-import { getLogChannelOrReply, postTextToLogChannel } from "../logging";
+import { getModChannelOrReply, postTextToChannel } from "../logging";
 import { getWarningArchive, StoredWarning } from "../storage";
 import { CommandToken } from "../types";
 
@@ -26,7 +26,7 @@ export async function showWarnings(
     return;
   }
 
-  const modChannelId = await getLogChannelOrReply(event);
+  const modChannelId = await getModChannelOrReply(event);
   if (!modChannelId) return;
 
   const archive = await getWarningArchive();
@@ -41,7 +41,7 @@ export async function showWarnings(
 
   // Keep the requested information in the mod channel. Only the brief
   // cross-channel confirmation is temporary.
-  await postTextToLogChannel(modChannelId, content);
+  await postTextToChannel(modChannelId, content);
   await replyUnlessInChannel(
     event,
     modChannelId,

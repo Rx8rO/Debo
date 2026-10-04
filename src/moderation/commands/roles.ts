@@ -6,7 +6,7 @@ import {
   rootUserMention,
   safeInlineText,
 } from "../common";
-import { getLogChannelOrReply, postTextToLogChannel } from "../logging";
+import { getModChannelOrReply, postTextToChannel } from "../logging";
 import { CommandToken } from "../types";
 
 export async function showRoles(
@@ -18,7 +18,7 @@ export async function showRoles(
     return;
   }
 
-  const modChannelId = await getLogChannelOrReply(event);
+  const modChannelId = await getModChannelOrReply(event);
   if (!modChannelId) return;
 
   const [roles, requesterName] = await Promise.all([
@@ -40,7 +40,7 @@ export async function showRoles(
     report,
   ].join("\n\n");
 
-  await postTextToLogChannel(modChannelId, content);
+  await postTextToChannel(modChannelId, content);
   await replyUnlessInChannel(
     event,
     modChannelId,
