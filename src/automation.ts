@@ -57,6 +57,8 @@ type LevelProgress = {
 type FilteredWordMatcher = {
   word: string;
   pattern: RegExp;
+  obfuscatedPattern?: RegExp;
+  confusablePattern?: RegExp;
 };
 
 const DEFAULT_CONFIG: AutomationConfig = {
@@ -78,6 +80,64 @@ const MAX_SPAM_WINDOW_SECONDS = 60;
 const MAX_SPAM_TIMEOUT_SECONDS = 86_400;
 const MAX_FILTER_WORDS = 100;
 const MAX_FILTER_WORD_LENGTH = 80;
+const LATIN_CONFUSABLES: Readonly<Record<string, string>> = {
+  а: "a",
+  α: "a",
+  в: "b",
+  β: "b",
+  ь: "b",
+  с: "c",
+  ϲ: "c",
+  ԁ: "d",
+  е: "e",
+  ε: "e",
+  н: "h",
+  һ: "h",
+  η: "n",
+  і: "i",
+  ι: "i",
+  ј: "j",
+  ϳ: "j",
+  к: "k",
+  κ: "k",
+  ӏ: "l",
+  λ: "l",
+  м: "m",
+  μ: "m",
+  п: "n",
+  о: "o",
+  ο: "o",
+  օ: "o",
+  р: "p",
+  ρ: "p",
+  ԛ: "q",
+  г: "r",
+  ѕ: "s",
+  т: "t",
+  τ: "t",
+  ս: "u",
+  υ: "u",
+  у: "y",
+  ν: "v",
+  х: "x",
+  χ: "x",
+  ү: "y",
+  զ: "q",
+  з: "3",
+};
+const LATIN_LEET_EQUIVALENTS: Readonly<Record<string, readonly string[]>> = {
+  a: ["4", "@"],
+  b: ["8"],
+  e: ["3"],
+  g: ["6", "9"],
+  i: ["1", "!", "|"],
+  l: ["1", "|"],
+  o: ["0"],
+  s: ["5", "$"],
+  t: ["7", "+"],
+  u: ["4", "v", "y", "1", "!", "|", "*", "_", "-", "."],
+  z: ["2"],
+};
 const XP_KEY_PART = "xp:";
 const SPAM_TIMEOUT_KEY_PART = "spam-timeout:";
 const FILTER_WORDS_KEY_PART = "filter-words";
@@ -1296,9 +1356,23 @@ function readDecimal(
 async function checkAndHandleWordFilter(
   event: ChannelMessageCreatedEvent,
 ): Promise<boolean> {
+  const matchers = getFilteredWordMatchers();
+  if (matchers.length === 0) return false;
+
   const normalizedMessage = event.messageContent.normalize("NFKC");
-  const matches = getFilteredWordMatchers()
-    .filter(({ pattern }) => pattern.test(normalizedMessage))
+  const needsConfusableMatching = matchers.some(
+    ({ confusablePattern }) => confusablePattern !== undefined,
+  );
+  const confusableMessage = needsConfusableMatching
+    ? normalizeFilterConfusables(normalizedMessage)
+    : normalizedMessage;
+  const matches = matchers
+    .filter(
+      ({ pattern, obfuscatedPattern, confusablePattern }) =>
+        pattern.test(normalizedMessage) ||
+        Boolean(obfuscatedPattern?.test(normalizedMessage)) ||
+        Boolean(confusablePattern?.test(confusableMessage)),
+    )
     .map(({ word }) => word);
 
   if (matches.length === 0) return false;
@@ -1334,8 +1408,68 @@ function buildFilteredWordMatchers(words: string[]): FilteredWordMatcher[] {
       String.raw`(^|[^\p{L}\p{N}\p{M}_])(${escapedWord})(?=$|[^\p{L}\p{N}\p{M}_])`,
       "iu",
     );
-    return { word, pattern };
+    const obfuscatedPattern = buildSeparatedFilterPattern(word, false);
+    const confusableWord = normalizeFilterConfusables(word);
+    const confusablePattern = isLatinFilterWord(word)
+      ? buildSeparatedFilterPattern(confusableWord, true)
+      : undefined;
+    return {
+      word,
+      pattern,
+      ...(obfuscatedPattern ? { obfuscatedPattern } : {}),
+      ...(confusablePattern ? { confusablePattern } : {}),
+    };
   });
+}
+
+function buildSeparatedFilterPattern(
+  value: string,
+  allowLeetEquivalents: boolean,
+): RegExp | undefined {
+  const characters = Array.from(value.normalize("NFKC")).filter((character) =>
+    /[\p{L}\p{N}\p{M}]/u.test(character),
+  );
+  if (characters.length < 2) return undefined;
+
+  const separator = String.raw`[\p{P}\p{S}\p{Z}\p{Cf}\p{M}\p{N}\u0640]*`;
+  const body = characters
+    .map((character) => {
+      const equivalents = allowLeetEquivalents
+        ? LATIN_LEET_EQUIVALENTS[character] ?? []
+        : [];
+      const alternatives = Array.from(new Set([character, ...equivalents]));
+      const characterPattern =
+        alternatives.length === 1
+          ? escapeRegExp(character)
+          : `(?:${alternatives.map(escapeRegExp).join("|")})`;
+      return `${characterPattern}+`;
+    })
+    .join(separator);
+  const startsAtWordBoundary = String.raw`(^|[^\p{L}\p{N}\p{M}_])`;
+  const allowsNumericSuffix = String.raw`(?=$|[^\p{L}\p{N}\p{M}_]|\p{N}+(?=$|[^\p{L}\p{N}\p{M}_]))`;
+  return new RegExp(`${startsAtWordBoundary}(?:${body})${allowsNumericSuffix}`, "iu");
+}
+
+function normalizeFilterConfusables(value: string): string {
+  return Array.from(
+    value
+      .normalize("NFKD")
+      .toLowerCase()
+      .replace(/ß/g, "ss")
+      .replace(/ς/g, "σ")
+      .replace(/[\p{Mn}\p{Me}]/gu, "")
+      .replace(/\u0640/gu, ""),
+  )
+    .map((character) => LATIN_CONFUSABLES[character] ?? character)
+    .join("");
+}
+
+function isLatinFilterWord(value: string): boolean {
+  const letters = Array.from(value).filter((character) => /\p{L}/u.test(character));
+  return (
+    letters.length > 0 &&
+    letters.every((character) => /\p{Script=Latin}/u.test(character))
+  );
 }
 
 function normalizeFilterWords(value: unknown): string[] {
