@@ -1,0 +1,12 @@
+# Dependencies and generated build output
+node_modules/
+dist/
+build/
+
+# Local credentials and environment-specific settings
+.env
+.env.*
+!.env.example
+
+# Local Root SDK state
+*.sqlite3
