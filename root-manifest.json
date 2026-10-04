@@ -1,6 +1,6 @@
 {
   "id": "ADGo9KrlgAmEqm3aTHZIpA",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "package": {
     "server": {
       "launch": "dist/main.js",
@@ -11,13 +11,13 @@
   "settings": {
     "groups": [
       {
-        "key": "welcome",
-        "title": "Welcome Bot",
+        "key": "moderation",
+        "title": "Moderation",
         "items": [
           {
-            "key": "participantRole",
-            "title": "Role to assign",
-            "description": "Choose the role members receive after posting five messages.",
+            "key": "adminRole",
+            "title": "Admin Role",
+            "description": "Only members with this selected role can use Debo's moderation commands; this setting does not grant additional Root permissions.",
             "required": true,
             "confirmation": "Save",
             "roleOrMember": {
@@ -32,7 +32,14 @@
   },
   "permissions": {
     "community": {
+      "kick": true,
+      "createBan": true,
       "manageRoles": true
+    },
+    "channel": {
+      "createMessage": true,
+      "deleteMessageOther": true,
+      "viewMessageHistory": true
     }
   }
 }

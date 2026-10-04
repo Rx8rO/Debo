@@ -1,8 +1,8 @@
 import { rootServer, RootBotStartState } from "@rootsdk/server-bot";
-import { initializeWelcomeBot } from "./example";
+import { initializeModerationBot } from "./moderation";
 
-async function onStarting(state: RootBotStartState): Promise<void> {
-  initializeWelcomeBot();
+async function onStarting(_state: RootBotStartState): Promise<void> {
+  initializeModerationBot();
 }
 
 (async () => {
