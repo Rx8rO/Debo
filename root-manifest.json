@@ -21,7 +21,7 @@
             "required": true,
             "confirmation": "Save",
             "roleOrMember": {
-              "selectBehavior": "role",
+              "selectBehavior": "roleSingle",
               "userIds": [],
               "communityRoleIds": []
             }
@@ -33,7 +33,7 @@
             "required": true,
             "confirmation": "Save",
             "roleOrMember": {
-              "selectBehavior": "user",
+              "selectBehavior": "userSingle",
               "userIds": [],
               "communityRoleIds": []
             }
@@ -51,7 +51,7 @@
             "required": false,
             "confirmation": "Save",
             "roleOrMember": {
-              "selectBehavior": "role",
+              "selectBehavior": "roleSingle",
               "userIds": [],
               "communityRoleIds": []
             }
