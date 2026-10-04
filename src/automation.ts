@@ -75,7 +75,6 @@ const MAX_REWARD_LEVEL = 1_000;
 const MAX_SPAM_MESSAGE_LIMIT = 1_000;
 const MAX_SPAM_WINDOW_SECONDS = 60;
 const MAX_SPAM_TIMEOUT_SECONDS = 86_400;
-const DEFAULT_FILTERED_WORDS = ["fuck"];
 const MAX_FILTERED_WORDS = 100;
 const MAX_FILTERED_WORD_LENGTH = 80;
 const XP_KEY_PART = "xp:";
@@ -1147,7 +1146,6 @@ async function checkAndHandleWordFilter(
     .map(({ word }) => word);
 
   if (matches.length === 0) return false;
-  if (await isWordFilterExempt(event.userId)) return false;
 
   let deleted = false;
   try {
@@ -1164,10 +1162,6 @@ async function checkAndHandleWordFilter(
   return true;
 }
 
-async function isWordFilterExempt(userId: UserGuid): Promise<boolean> {
-  return (await checkModeratorRole(userId)).allowed;
-}
-
 function getFilteredWordMatchers(): FilteredWordMatcher[] {
   const setting = rootServer.globalSettings?.automation?.additionalFilteredWords;
   const settingValue = typeof setting === "string" ? setting : "";
@@ -1181,7 +1175,7 @@ function getFilteredWordMatchers(): FilteredWordMatcher[] {
   const uniqueWords = new Set<string>();
   const matchers: FilteredWordMatcher[] = [];
 
-  for (const word of [...DEFAULT_FILTERED_WORDS, ...configuredWords]) {
+  for (const word of configuredWords) {
     if (
       word.length === 0 ||
       word.length > MAX_FILTERED_WORD_LENGTH ||

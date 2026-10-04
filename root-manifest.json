@@ -1,6 +1,6 @@
 {
   "id": "ADGo9KrlgAmEqm3aTHZIpA",
-  "version": "1.10.1",
+  "version": "1.10.2",
   "package": {
     "server": {
       "launch": "dist/main.js",
@@ -58,8 +58,8 @@
           },
           {
             "key": "additionalFilteredWords",
-            "title": "Additional Filtered Words",
-            "description": "Add words or phrases separated by commas, semicolons, or new lines. Matching ignores letter case; the built-in word 'fuck' is always filtered. Messages outside the Admin Role with a match are deleted and logged in the Logs channel. Admin Role members bypass this word filter.",
+            "title": "Filtered Words",
+            "description": "Add only the words or phrases Debo should filter, separated by commas, semicolons, or new lines. Matching ignores letter case. Leave this empty to disable word filtering. Matching messages are deleted and logged in the Logs channel, including messages from Admin Role members and the Owner.",
             "required": false,
             "confirmation": "Save",
             "text": {
