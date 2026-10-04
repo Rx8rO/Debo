@@ -1,6 +1,6 @@
 # Debo — Root Moderation and Automation Bot
 
-Debo provides community-configurable moderation, leveling, and anti-spam features. Each community selects an **Admin Role** and one **Owner** member in Global Settings. Admin Role members can use normal moderator commands; only the selected Owner can use the high-impact ban, channel-setup, spam-configuration, and leveling-configuration commands. Public rank lookups are available to everyone. XP, channel settings, spam settings, and active spam timeouts are stored in Root `appData` and survive bot restarts.
+Debo provides community-configurable moderation, word filtering, leveling, and anti-spam features. Each community selects an **Admin Role** and one **Owner** member in Global Settings. Admin Role members can use normal moderator commands; only the selected Owner can use the high-impact ban, channel-setup, spam-configuration, and leveling-configuration commands. Public rank lookups are available to everyone. XP, channel settings, spam settings, and active spam timeouts are stored in Root `appData` and survive bot restarts.
 
 ## Commands
 
@@ -42,12 +42,18 @@ Use a Root user mention for `@user` and either an exact role name or a Root role
 | `!roles` | Admin Role | Lists all community roles and their Root IDs in the Mod channel. |
 | `!setmodchannel` | Owner | Sets the private Mod channel where reports and `!modhelp` are posted. |
 | `!setmodchannel clear` | Owner | Clears the configured Mod channel. |
-| `!setlogchannel` | Owner | Sets the separate Logs channel for moderation actions. |
+| `!setlogchannel` | Owner | Sets the separate Logs channel for moderation actions and automatic filter audits. |
 | `!setlogchannel clear` | Owner | Clears the configured Logs channel. |
 | `!help` | Everyone | Shows only commands available to everyone in the current channel. |
 | `!modhelp` | Admin Role | Posts the full command list in the configured Mod channel. |
 
 Every command message is excluded from XP.
+
+## Automatic word filter
+
+The word filter includes **`fuck`** by default. Add extra words or phrases under **Global Settings → Automation → Additional Filtered Words**, separated by commas, semicolons, or new lines. Matching is case-insensitive, so `fuck`, `FUCK`, and `Fuck!` all match. Debo matches whole words or phrases rather than arbitrary substrings, which avoids false positives inside unrelated words; add a variant separately if you want that exact variant filtered.
+
+When a non-admin, non-owner message matches, Debo deletes it and sends an audit entry to the configured **Logs channel** with the member, channel ID, detected term(s), original message text, and UTC time. It does not repost the message in public chat. Members in the configured **Admin Role** and the selected **Owner** bypass the word filter only; the existing spam protection still applies to them. Make sure the Logs channel is configured and restricted to the moderators who should see deleted-message content.
 
 ## Leveling and spam protection
 
@@ -81,8 +87,8 @@ Warning records, Debo-tracked ban dates, and the Mod and Logs channel choices ar
 
    If you already ran `npm.cmd install` in this same project folder, and `package.json` has not changed, skip it on later updates and just run `npm.cmd run build`. This update adds no dependencies.
 
-2. Install/update Debo to manifest version **1.9.1**. Keep the requested permissions enabled: community `kick`, `createBan`, `manageBans`, and `manageRoles`; channel `createMessage`, `deleteMessageOther`, and `viewMessageHistory`. Open Debo's **Global Settings** and select one role in **Admin Role** plus the single member in **Owner**. The Admin Role gates standard moderator commands; Owner gates the high-impact commands listed above. These settings do not grant additional Root permissions. Both checks fail closed if their setting is missing.
-3. Still in **Global Settings → Automation**, optionally select a **Spam Timeout Role**. For that role to block messages, separately configure it to deny sending messages in the channels you want protected. Level reward roles are now configured with `!levelconfig reward add`, not Global Settings. Make sure Debo can manage roles.
+2. Install/update Debo to manifest version **1.10.0**. Keep the requested permissions enabled: community `kick`, `createBan`, `manageBans`, and `manageRoles`; channel `createMessage`, `deleteMessageOther`, and `viewMessageHistory`. Open Debo's **Global Settings** and select one role in **Admin Role** plus the single member in **Owner**. The Admin Role gates standard moderator commands; Owner gates the high-impact commands listed above. These settings do not grant additional Root permissions. Both checks fail closed if their setting is missing.
+3. In **Global Settings → Automation**, optionally select a **Spam Timeout Role**. For that role to block messages, separately configure it to deny sending messages in the channels you want protected. Add extra words or phrases in **Additional Filtered Words**, separated by commas, semicolons, or new lines. The word `fuck` is included by default. Level reward roles are configured with `!levelconfig reward add`, not Global Settings. Make sure Debo can manage roles.
 4. An Owner configures two separate channels by running `!setmodchannel` in the private channel for reports and `!modhelp`, then running `!setlogchannel` in the channel for moderation-action logs. The old shared destination is retained as the Mod channel for existing communities. Make sure Debo can access and post in both channels.
 5. Only the selected Owner can review or change XP and spam configuration values. Run these commands from a channel where Debo can reply:
 
@@ -140,7 +146,8 @@ Use an isolated test community such as **Debo-Test**, not a real community. Afte
 2. Send one ordinary chat message (not a `!` command), then run `!rank`. You should have 100 XP and be level 2.
 3. To test an additional level reward, run `!levelconfig reward add 3 @role` using a test role mention, then send two more ordinary messages. At 300 XP you should reach level 3 and receive that role. Check the saved mapping with `!levelconfig reward list`.
 4. Test another member's public lookup with `!rank @user`. Try the admin XP commands on a test member with `!xp add 50 @user`, then `!levelreset @user`; rank should return to level 1 with 0 XP.
-5. As the configured Owner, test spam deletion with:
+5. In **Global Settings → Automation**, set a private Logs channel and add the harmless test term `filtertest` under **Additional Filtered Words**. From a non-admin test account, send `FUCK!` and `FILTERTEST!`; both should be deleted and logged with the matched term and original text. Send `FUCK!` from an Admin Role member; the word filter should leave it visible. Spam protection still applies to admins.
+6. As the configured Owner, test spam deletion with:
 
    ```text
    !spamconfig limit 5
@@ -149,7 +156,7 @@ Use an isolated test community such as **Debo-Test**, not a real community. Afte
    ```
 
    Send more than five messages quickly from a test member. The 6th message in the one-second window should be deleted; further messages should also be hidden during the 10-second timeout. To verify a real Root mute as well, configure the selected Spam Timeout Role to deny message sending in the test channel.
-6. Clear the temporary level-3 test reward and restore normal settings when finished, for example:
+7. Clear the temporary level-3 test reward and restore normal settings when finished, for example:
 
    ```text
    !levelconfig reward clear 3

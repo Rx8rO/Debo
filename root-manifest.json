@@ -1,6 +1,6 @@
 {
   "id": "ADGo9KrlgAmEqm3aTHZIpA",
-  "version": "1.9.1",
+  "version": "1.10.0",
   "package": {
     "server": {
       "launch": "dist/main.js",
@@ -54,6 +54,16 @@
               "selectBehavior": "role",
               "userIds": [],
               "communityRoleIds": []
+            }
+          },
+          {
+            "key": "additionalFilteredWords",
+            "title": "Additional Filtered Words",
+            "description": "Add words or phrases separated by commas, semicolons, or new lines. Matching ignores letter case; the built-in word 'fuck' is always filtered. Non-admin and non-owner messages with a match are deleted and logged in the Logs channel. Admin Role members and the selected Owner bypass this word filter.",
+            "required": false,
+            "confirmation": "Save",
+            "text": {
+              "defaultValue": ""
             }
           }
         ]

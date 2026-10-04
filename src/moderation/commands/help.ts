@@ -48,13 +48,14 @@ const OWNER_COMMANDS = [
   "!levelconfig reward add level @role — add a role reward for any level.",
   "!levelconfig reward list/remove/clear — manage configured level rewards.",
   "!setmodchannel — set the private Mod channel (or add clear to remove it).",
-  "!setlogchannel — set the moderation-action Logs channel (or add clear to remove it).",
+  "!setlogchannel — set the Logs channel for moderation actions and automatic filter audits (or add clear to remove it).",
 ].join("\n");
 
 const MODERATOR_HELP_TEXT = [
   "**Debo complete command list**",
   "Admin Role commands require the configured Admin Role; Owner-only commands require the single member selected as Owner in Global Settings.",
-  "Use a private Mod channel for reports and this help, and a separate Logs channel for moderation-action audit logs. Configure them with !setmodchannel and !setlogchannel.",
+  "Use a private Mod channel for reports and this help, and a separate Logs channel for moderation-action and automatic filter audit logs. Configure them with !setmodchannel and !setlogchannel.",
+  "The automatic word filter includes fuck by default; add terms in Global Settings → Automation → Additional Filtered Words. Matching messages are deleted and logged in Logs; Admin Role members and the Owner bypass this filter.",
   PUBLIC_HELP_TEXT.replace("**Debo public commands**", "**Public commands**"),
   "**Admin Role commands**",
   ADMIN_COMMANDS,

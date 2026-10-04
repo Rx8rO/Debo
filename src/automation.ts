@@ -19,6 +19,7 @@ import {
   safeInlineText,
 } from "./moderation/common";
 import { parseCommand, tokenToText } from "./moderation/parser";
+import { getLogChannelId } from "./moderation/storage";
 import { CommandToken } from "./moderation/types";
 
 type AutomationConfig = {
@@ -52,6 +53,11 @@ type LevelProgress = {
   xpForNextLevel: number;
 };
 
+type FilteredWordMatcher = {
+  word: string;
+  pattern: RegExp;
+};
+
 const DEFAULT_CONFIG: AutomationConfig = {
   xpMinPerMessage: 5,
   xpMaxPerMessage: 10,
@@ -69,6 +75,9 @@ const MAX_REWARD_LEVEL = 1_000;
 const MAX_SPAM_MESSAGE_LIMIT = 1_000;
 const MAX_SPAM_WINDOW_SECONDS = 60;
 const MAX_SPAM_TIMEOUT_SECONDS = 86_400;
+const DEFAULT_FILTERED_WORDS = ["fuck"];
+const MAX_FILTERED_WORDS = 100;
+const MAX_FILTERED_WORD_LENGTH = 80;
 const XP_KEY_PART = "xp:";
 const SPAM_TIMEOUT_KEY_PART = "spam-timeout:";
 const CONFIG_KEY_PART = "config";
@@ -82,6 +91,8 @@ const activeTimeouts = new Map<UserGuid, StoredSpamTimeout>();
 const timeoutTimers = new Map<UserGuid, ReturnType<typeof setTimeout>>();
 const xpRecordsByUser = new Map<UserGuid, UserXpRecord>();
 const rewardAssignmentsInFlight = new Set<UserGuid>();
+let cachedFilterSetting: string | undefined;
+let cachedFilterMatchers: FilteredWordMatcher[] | undefined;
 
 /** Register the community-scoped XP, rank, and anti-spam message handler. */
 export function initializeAutomationBot(communityId: CommunityGuid): void {
@@ -124,6 +135,12 @@ async function onMessage(event: ChannelMessageCreatedEvent): Promise<void> {
   if (event.messageType !== MessageType.UserMessage) return;
 
   await initialization;
+
+  try {
+    if (await checkAndHandleWordFilter(event)) return;
+  } catch (error: unknown) {
+    console.error("Debo could not check this message against the word filter:", error);
+  }
 
   try {
     if (await checkAndHandleSpam(event)) return;
@@ -1119,6 +1136,134 @@ function readDecimal(
   return Number.isFinite(parsed) && parsed >= minimum && parsed <= maximum
     ? parsed
     : undefined;
+}
+
+async function checkAndHandleWordFilter(
+  event: ChannelMessageCreatedEvent,
+): Promise<boolean> {
+  const normalizedMessage = event.messageContent.normalize("NFKC");
+  const matches = getFilteredWordMatchers()
+    .filter(({ pattern }) => pattern.test(normalizedMessage))
+    .map(({ word }) => word);
+
+  if (matches.length === 0) return false;
+  if (await isWordFilterExempt(event.userId)) return false;
+
+  let deleted = false;
+  try {
+    await rootServer.community.channelMessages.delete({
+      channelId: event.channelId,
+      id: event.id,
+    });
+    deleted = true;
+  } catch (error: unknown) {
+    console.warn("The word filter matched a message but could not delete it:", error);
+  }
+
+  await logFilteredMessage(event, matches, deleted);
+  return true;
+}
+
+async function isWordFilterExempt(userId: UserGuid): Promise<boolean> {
+  if ((await checkModeratorRole(userId)).allowed) return true;
+  return (await checkOwner(userId)).allowed;
+}
+
+function getFilteredWordMatchers(): FilteredWordMatcher[] {
+  const setting = rootServer.globalSettings?.automation?.additionalFilteredWords;
+  const settingValue = typeof setting === "string" ? setting : "";
+  if (cachedFilterMatchers && settingValue === cachedFilterSetting) {
+    return cachedFilterMatchers;
+  }
+
+  const configuredWords = settingValue
+    .split(/[,;\r\n]+/)
+    .map((word) => word.normalize("NFKC").trim().toLowerCase().replace(/\s+/g, " "));
+  const uniqueWords = new Set<string>();
+  const matchers: FilteredWordMatcher[] = [];
+
+  for (const word of [...DEFAULT_FILTERED_WORDS, ...configuredWords]) {
+    if (
+      word.length === 0 ||
+      word.length > MAX_FILTERED_WORD_LENGTH ||
+      !/[\p{L}\p{N}]/u.test(word) ||
+      uniqueWords.has(word)
+    ) {
+      continue;
+    }
+
+    uniqueWords.add(word);
+    const escapedWord = escapeRegExp(word).replace(/\s+/g, "\\s+");
+    const pattern = new RegExp(
+      String.raw`(^|[^\p{L}\p{N}\p{M}_])(${escapedWord})(?=$|[^\p{L}\p{N}\p{M}_])`,
+      "iu",
+    );
+    matchers.push({ word, pattern });
+    if (matchers.length >= MAX_FILTERED_WORDS) break;
+  }
+
+  cachedFilterSetting = settingValue;
+  cachedFilterMatchers = matchers;
+  return matchers;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function logFilteredMessage(
+  event: ChannelMessageCreatedEvent,
+  matchedWords: string[],
+  deleted: boolean,
+): Promise<void> {
+  try {
+    const logChannelId = await getLogChannelId();
+    if (!logChannelId) {
+      console.warn(
+        "A filtered message was handled, but no Logs channel is configured. Run !setlogchannel to enable filter audit logs.",
+      );
+      return;
+    }
+
+    const channel = await rootServer.community.channels.get({ id: logChannelId });
+    if (!channel.channelPermission.channelCreateMessage) {
+      console.warn("Debo cannot post filtered-message audits in the Logs channel.");
+      return;
+    }
+
+    const memberName = await getCommunityMemberName(event.userId);
+    const listedMatches = matchedWords
+      .slice(0, 5)
+      .map((word) => formatFilterLogCode(word, MAX_FILTERED_WORD_LENGTH))
+      .join(", ");
+    const extraMatches =
+      matchedWords.length > 5 ? ` (and ${matchedWords.length - 5} more)` : "";
+    const originalMessage = formatFilterLogCode(event.messageContent, 850);
+    const content = [
+      `**${deleted ? "Filtered message deleted" : "Word-filter delete failed"}**`,
+      `Member: ${formatFilterLogCode(memberName, 100)} (${formatFilterLogCode(String(event.userId), 100)})`,
+      `Channel ID: ${formatFilterLogCode(String(event.channelId), 100)}`,
+      `Detected word${matchedWords.length === 1 ? "" : "s"}: ${listedMatches}${extraMatches}`,
+      `Original message: ${originalMessage}`,
+      `Time (UTC): ${new Date().toISOString()}`,
+    ].join("\n");
+
+    await rootServer.community.channelMessages.create({
+      channelId: logChannelId,
+      content,
+    });
+  } catch (error: unknown) {
+    console.error("Could not post a word-filter audit to the Logs channel:", error);
+  }
+}
+
+function formatFilterLogCode(value: string, maximumLength: number): string {
+  const safeValue = safeInlineText(value, maximumLength)
+    .replace(/`/g, "'")
+    .replace(/@/g, "@\u200b");
+  const truncated = value.length > maximumLength ? `${safeValue}…` : safeValue;
+  const backtick = String.fromCharCode(96);
+  return `${backtick}${truncated}${backtick}`;
 }
 
 async function checkAndHandleSpam(
