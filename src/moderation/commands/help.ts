@@ -52,13 +52,15 @@ const OWNER_COMMANDS = [
   "!filter add word1,word2 — add comma-separated filter words or phrases.",
   "!filter list — show the configured filter terms.",
   "!filter remove word1,word2 / !filter clear — remove selected terms or disable the filter.",
+  "!filter bypass @user/@role — exempt a member or role from word filtering.",
+  "!filter bypass remove @user/@role — remove bypasses; use list or clear to manage all.",
 ].join("\n");
 
 const MODERATOR_HELP_TEXT = [
   "**Debo complete command list**",
   "Admin Role commands require the configured Admin Role; Owner-only commands require the single member selected as Owner in Global Settings.",
   "Use a private Mod channel for reports and this help, and a separate Logs channel for moderation-action and automatic filter audit logs. Configure them with !setmodchannel and !setlogchannel.",
-  "The configured Owner manages the per-community word filter with !filter add, !filter list, !filter remove, and !filter clear. Only explicitly added terms are filtered; common punctuation, spacing, leetspeak, and lookalike variants are also checked. An empty list disables it. Matching messages from everyone, including admins and the Owner, are deleted and logged in Logs.",
+  "The configured Owner manages the per-community word filter with !filter add, !filter list, !filter remove, and !filter clear. Only explicitly added terms are filtered; common punctuation, spacing, leetspeak, and lookalike variants are also checked. An empty list disables it. Use !filter bypass to exempt specific members or roles. Matched messages are deleted and logged in Logs unless the author or one of their roles is explicitly bypassed; there is no automatic Admin Role or Owner exemption.",
   PUBLIC_HELP_TEXT.replace("**Debo public commands**", "**Public commands**"),
   "**Admin Role commands**",
   ADMIN_COMMANDS,

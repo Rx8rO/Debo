@@ -61,6 +61,21 @@ type FilteredWordMatcher = {
   confusablePattern?: RegExp;
 };
 
+type FilterBypassTarget = {
+  id: string;
+  label: string;
+};
+
+type FilterBypassConfig = {
+  users: FilterBypassTarget[];
+  roles: FilterBypassTarget[];
+};
+
+type CachedFilterRoleAssignments = {
+  roleIds: Set<string>;
+  checkedAt: number;
+};
+
 const DEFAULT_CONFIG: AutomationConfig = {
   xpMinPerMessage: 5,
   xpMaxPerMessage: 10,
@@ -80,6 +95,9 @@ const MAX_SPAM_WINDOW_SECONDS = 60;
 const MAX_SPAM_TIMEOUT_SECONDS = 86_400;
 const MAX_FILTER_WORDS = 100;
 const MAX_FILTER_WORD_LENGTH = 80;
+const FILTER_WARNING_DELETE_AFTER_MS = 10_000;
+const FILTER_BYPASS_ROLE_CACHE_TTL_MS = 15_000;
+const FILTER_BYPASS_ROLE_CACHE_MAX_ENTRIES = 2_000;
 const LATIN_CONFUSABLES: Readonly<Record<string, string>> = {
   а: "a",
   α: "a",
@@ -141,6 +159,7 @@ const LATIN_LEET_EQUIVALENTS: Readonly<Record<string, readonly string[]>> = {
 const XP_KEY_PART = "xp:";
 const SPAM_TIMEOUT_KEY_PART = "spam-timeout:";
 const FILTER_WORDS_KEY_PART = "filter-words";
+const FILTER_BYPASS_KEY_PART = "filter-bypasses";
 const CONFIG_KEY_PART = "config";
 
 let storagePrefix: string | undefined;
@@ -154,6 +173,8 @@ const xpRecordsByUser = new Map<UserGuid, UserXpRecord>();
 const rewardAssignmentsInFlight = new Set<UserGuid>();
 let configuredFilterWords: string[] = [];
 let filterWordMatchers: FilteredWordMatcher[] = [];
+let filterBypassConfig: FilterBypassConfig = { users: [], roles: [] };
+const filterBypassRoleCache = new Map<UserGuid, CachedFilterRoleAssignments>();
 
 /** Register the community-scoped XP, rank, and anti-spam message handler. */
 export function initializeAutomationBot(communityId: CommunityGuid): void {
@@ -165,6 +186,7 @@ export function initializeAutomationBot(communityId: CommunityGuid): void {
     loadAutomationConfig(),
     restoreSpamTimeouts(),
     loadFilteredWords(),
+    loadFilterBypasses(),
   ]).then(() => undefined);
 
   rootServer.community.channelMessages.on(
@@ -295,6 +317,16 @@ async function loadFilteredWords(): Promise<void> {
   } catch (error: unknown) {
     setFilteredWordCache([]);
     console.error("Could not load Debo's filtered words:", error);
+  }
+}
+
+async function loadFilterBypasses(): Promise<void> {
+  try {
+    const stored = await rootServer.dataStore.appData.get<unknown>(filterBypassKey());
+    setFilterBypassCache(normalizeFilterBypasses(stored));
+  } catch (error: unknown) {
+    setFilterBypassCache({ users: [], roles: [] });
+    console.error("Could not load Debo's word-filter bypasses:", error);
   }
 }
 
@@ -1086,6 +1118,11 @@ async function configureWordFilter(
   if (!(await requireAutomationOwner(event))) return;
 
   const action = typeof args[0] === "string" ? args[0].toLowerCase() : "";
+  if (action === "bypass") {
+    await configureFilterBypass(event, args.slice(1));
+    return;
+  }
+
   if (action === "list" && args.length === 1) {
     if (configuredFilterWords.length === 0) {
       await reply(event, "No filtered words are configured; word filtering is disabled.");
@@ -1166,6 +1203,190 @@ async function configureWordFilter(
   await reply(event, filterCommandUsage());
 }
 
+async function configureFilterBypass(
+  event: ChannelMessageCreatedEvent,
+  args: CommandToken[],
+): Promise<void> {
+  const first = typeof args[0] === "string" ? args[0].toLowerCase() : "";
+  const hasExplicitAction = ["add", "remove", "list", "clear"].includes(first);
+  const targetTokens = hasExplicitAction ? args.slice(1) : args;
+
+  if (first === "list") {
+    if (targetTokens.length !== 0) {
+      await reply(event, filterBypassUsage());
+      return;
+    }
+    if (filterBypassConfig.users.length === 0 && filterBypassConfig.roles.length === 0) {
+      await reply(event, "No users or roles currently bypass the word filter.");
+      return;
+    }
+    await replyFilterBypassList(event, filterBypassConfig);
+    return;
+  }
+
+  if (first === "clear") {
+    if (targetTokens.length !== 0) {
+      await reply(event, filterBypassUsage());
+      return;
+    }
+    await saveFilterBypasses({ users: [], roles: [] });
+    await reply(event, "Cleared all word-filter bypasses.");
+    return;
+  }
+
+  if (targetTokens.length === 0) {
+    await reply(event, filterBypassUsage());
+    return;
+  }
+
+  const action = first === "remove" ? "remove" : "add";
+  const requested = parseFilterBypassTargets(event, targetTokens);
+  if (requested.invalidCount > 0) {
+    await reply(
+      event,
+      `Use Root user or role mentions for every bypass target. ${filterBypassUsage()}`,
+    );
+    return;
+  }
+
+  if (action === "add") {
+    const updated: FilterBypassConfig = {
+      users: [...filterBypassConfig.users],
+      roles: [...filterBypassConfig.roles],
+    };
+    let addedCount = 0;
+    for (const target of requested.users) {
+      if (updated.users.some((existing) => existing.id === target.id)) continue;
+      updated.users.push(target);
+      addedCount += 1;
+    }
+    for (const target of requested.roles) {
+      if (updated.roles.some((existing) => existing.id === target.id)) continue;
+      updated.roles.push(target);
+      addedCount += 1;
+    }
+    if (addedCount === 0) {
+      await reply(event, "Those users or roles already bypass the word filter.");
+      return;
+    }
+
+    await saveFilterBypasses(updated);
+    await reply(
+      event,
+      `Added ${addedCount} word-filter bypass target${addedCount === 1 ? "" : "s"}.`,
+    );
+    return;
+  }
+
+  const userIdsToRemove = new Set(requested.users.map(({ id }) => id));
+  const roleIdsToRemove = new Set(requested.roles.map(({ id }) => id));
+  const remaining: FilterBypassConfig = {
+    users: filterBypassConfig.users.filter(({ id }) => !userIdsToRemove.has(id)),
+    roles: filterBypassConfig.roles.filter(({ id }) => !roleIdsToRemove.has(id)),
+  };
+  const removedCount =
+    filterBypassConfig.users.length - remaining.users.length +
+    filterBypassConfig.roles.length - remaining.roles.length;
+  if (removedCount === 0) {
+    await reply(event, "None of those users or roles were bypassing the word filter.");
+    return;
+  }
+
+  await saveFilterBypasses(remaining);
+  await reply(
+    event,
+    `Removed ${removedCount} word-filter bypass target${removedCount === 1 ? "" : "s"}.`,
+  );
+}
+
+function parseFilterBypassTargets(
+  event: ChannelMessageCreatedEvent,
+  tokens: CommandToken[],
+): {
+  users: FilterBypassTarget[];
+  roles: FilterBypassTarget[];
+  invalidCount: number;
+} {
+  const users = new Map<string, FilterBypassTarget>();
+  const roles = new Map<string, FilterBypassTarget>();
+  let invalidCount = 0;
+
+  for (const token of tokens) {
+    const user = getMentionedUser(event, token);
+    if (user) {
+      const id = normalizeFilterBypassId(String(user.userId));
+      if (!id) {
+        invalidCount += 1;
+        continue;
+      }
+      users.set(id, {
+        id,
+        label: safeInlineText(user.displayName, 100).trim() || id,
+      });
+      continue;
+    }
+
+    const role = getRoleMention(token);
+    if (role) {
+      const id = normalizeFilterBypassId(role.roleId);
+      if (!id) {
+        invalidCount += 1;
+        continue;
+      }
+      roles.set(id, {
+        id,
+        label: safeInlineText(role.displayName, 100).trim() || id,
+      });
+      continue;
+    }
+
+    invalidCount += 1;
+  }
+
+  return {
+    users: Array.from(users.values()),
+    roles: Array.from(roles.values()),
+    invalidCount,
+  };
+}
+
+async function replyFilterBypassList(
+  event: ChannelMessageCreatedEvent,
+  config: FilterBypassConfig,
+): Promise<void> {
+  const entries = [
+    ...config.users.map(
+      (target) => `User: ${formatFilterLogCode(target.label, 100)} (${formatFilterLogCode(target.id, 100)})`,
+    ),
+    ...config.roles.map(
+      (target) => `Role: ${formatFilterLogCode(target.label, 100)} (${formatFilterLogCode(target.id, 100)})`,
+    ),
+  ];
+  const messages: string[] = [];
+  let current = "**Word-filter bypasses**";
+  for (const entry of entries) {
+    if (current.length + entry.length + 1 > 1_400) {
+      messages.push(current);
+      current = "**Word-filter bypasses (continued)**";
+    }
+    current += `\n${entry}`;
+  }
+  messages.push(current);
+
+  for (let index = 0; index < messages.length; index += 1) {
+    await reply(event, messages[index]);
+    if (index < messages.length - 1) await sleep(250);
+  }
+}
+
+function filterBypassUsage(): string {
+  return [
+    "Usage: !filter bypass @user/@role — add one or more bypasses.",
+    "!filter bypass remove @user/@role — remove bypasses.",
+    "!filter bypass list / !filter bypass clear — show or clear bypasses.",
+  ].join("\n");
+}
+
 async function replyFilteredWordList(
   event: ChannelMessageCreatedEvent,
   words: string[],
@@ -1196,6 +1417,9 @@ function filterCommandUsage(): string {
     "!filter list — show the configured list.",
     "!filter remove word1,word2 — remove words from the list.",
     "!filter clear — remove all words and disable filtering.",
+    "!filter bypass @user/@role — exempt a user or role from word filtering.",
+    "!filter bypass remove @user/@role — remove a bypass.",
+    "!filter bypass list/clear — view or clear filter bypasses.",
   ].join("\n");
 }
 
@@ -1270,7 +1494,7 @@ async function isAuthorizedFilterCommand(
     return false;
   }
   const action = parsed.args[0].toLowerCase();
-  if (!["add", "list", "remove", "clear"].includes(action)) return false;
+  if (!["add", "list", "remove", "clear", "bypass"].includes(action)) return false;
   return (await checkOwner(event.userId)).allowed;
 }
 
@@ -1375,7 +1599,7 @@ async function checkAndHandleWordFilter(
     )
     .map(({ word }) => word);
 
-  if (matches.length === 0) return false;
+  if (matches.length === 0 || (await isFilterBypassed(event))) return false;
 
   let deleted = false;
   try {
@@ -1389,7 +1613,77 @@ async function checkAndHandleWordFilter(
   }
 
   await logFilteredMessage(event, matches, deleted);
+  if (deleted) await notifyFilteredMessage(event);
   return true;
+}
+
+async function isFilterBypassed(
+  event: ChannelMessageCreatedEvent,
+): Promise<boolean> {
+  const userId = normalizeFilterBypassId(String(event.userId));
+  if (!userId) return false;
+  if (filterBypassConfig.users.some((target) => target.id === userId)) {
+    return true;
+  }
+  if (filterBypassConfig.roles.length === 0) return false;
+
+  const now = Date.now();
+  let cached = filterBypassRoleCache.get(event.userId);
+  if (!cached || now - cached.checkedAt >= FILTER_BYPASS_ROLE_CACHE_TTL_MS) {
+    try {
+      const memberRoles = await rootServer.community.communityMemberRoles.list({
+        userId: event.userId,
+      });
+      const roleIds = new Set(
+        memberRoles.communityRoleIds
+          .map((roleId) => normalizeFilterBypassId(String(roleId)))
+          .filter((roleId): roleId is string => roleId !== undefined),
+      );
+      cached = { roleIds, checkedAt: now };
+      cacheFilterRoleAssignments(event.userId, cached);
+    } catch (error: unknown) {
+      // A failed role lookup must not accidentally exempt a member from filtering.
+      console.warn("Could not check word-filter role bypasses; filtering remains enabled:", error);
+      return false;
+    }
+  }
+
+  return filterBypassConfig.roles.some((target) => cached.roleIds.has(target.id));
+}
+
+function cacheFilterRoleAssignments(
+  userId: UserGuid,
+  assignments: CachedFilterRoleAssignments,
+): void {
+  filterBypassRoleCache.delete(userId);
+  filterBypassRoleCache.set(userId, assignments);
+  if (filterBypassRoleCache.size > FILTER_BYPASS_ROLE_CACHE_MAX_ENTRIES) {
+    const oldestUserId = filterBypassRoleCache.keys().next().value;
+    if (oldestUserId !== undefined) filterBypassRoleCache.delete(oldestUserId);
+  }
+}
+
+async function notifyFilteredMessage(
+  event: ChannelMessageCreatedEvent,
+): Promise<void> {
+  let mention = "";
+  try {
+    mention = rootUserMention(
+      event.userId,
+      await getCommunityMemberName(event.userId),
+    );
+  } catch (error: unknown) {
+    console.warn("Could not resolve the member for a word-filter notice:", error);
+  }
+
+  const content = [
+    "⚠️",
+    mention,
+    "Your message was automatically removed because it matched this community's word filter. Please avoid using filtered terms.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  await reply(event, content, FILTER_WARNING_DELETE_AFTER_MS);
 }
 
 function getFilteredWordMatchers(): FilteredWordMatcher[] {
@@ -1514,6 +1808,53 @@ function normalizeFilterWord(value: string): string | undefined {
     return undefined;
   }
   return word;
+}
+
+function setFilterBypassCache(config: FilterBypassConfig): void {
+  filterBypassConfig = config;
+}
+
+function normalizeFilterBypasses(value: unknown): FilterBypassConfig {
+  const source =
+    value && typeof value === "object"
+      ? (value as Partial<FilterBypassConfig>)
+      : {};
+  return {
+    users: normalizeFilterBypassTargets(source.users),
+    roles: normalizeFilterBypassTargets(source.roles),
+  };
+}
+
+function normalizeFilterBypassTargets(value: unknown): FilterBypassTarget[] {
+  if (!Array.isArray(value)) return [];
+
+  const targets = new Map<string, FilterBypassTarget>();
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const source = entry as Partial<FilterBypassTarget>;
+    const id = normalizeFilterBypassId(source.id);
+    if (!id) continue;
+    const label =
+      typeof source.label === "string"
+        ? safeInlineText(source.label, 100).trim()
+        : "";
+    if (!targets.has(id)) targets.set(id, { id, label: label || id });
+  }
+  return Array.from(targets.values());
+}
+
+function normalizeFilterBypassId(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.trim().length === 0) return undefined;
+  return value.trim().replace(/[{}]/g, "").toLowerCase();
+}
+
+async function saveFilterBypasses(config: FilterBypassConfig): Promise<void> {
+  const normalized = normalizeFilterBypasses(config);
+  await rootServer.dataStore.appData.set<FilterBypassConfig>({
+    key: filterBypassKey(),
+    value: normalized,
+  });
+  setFilterBypassCache(normalized);
 }
 
 async function saveFilteredWords(words: string[]): Promise<void> {
@@ -1837,6 +2178,10 @@ function configKey(): string {
 
 function filterWordsKey(): string {
   return `${getStoragePrefix()}:${FILTER_WORDS_KEY_PART}`;
+}
+
+function filterBypassKey(): string {
+  return `${getStoragePrefix()}:${FILTER_BYPASS_KEY_PART}`;
 }
 
 function xpKeyPrefix(): string {
