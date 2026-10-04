@@ -11,65 +11,99 @@ import {
 import { postTextToLogChannel } from "../logging";
 import { getLogChannelId } from "../storage";
 
-const HELP_TEXT = [
-  "**Debo commands**",
-  "!rank — show your level, total XP, progress, and rank in this community.",
-  "!rank @user — show another member's level, XP, progress, and community rank.",
-  "!levelconfig — show the current XP range, cooldown, and reward settings (Admin Role only).",
-  "!levelconfig xp min max — set the random XP range (Admin Role only).",
-  "!levelconfig cooldown seconds — set the XP cooldown (Admin Role only).",
-  "!levelconfig reward add level @role — add a role reward for any level. Use reward list/remove/clear to manage them (Admin Role only).",
-  "!xp add amount @user — grant XP to a member (Admin Role only).",
-  "!levelreset @user — reset a member's XP to zero (Admin Role only).",
-  "!spamconfig [limit|window|timeout] [value] — view or update spam controls (Admin Role only).",
-  "!kick @user [reason] — remove a member without banning them; reason is optional.",
-  "!ban @user reason — permanently ban a member; reason is required.",
-  "!unban userID — unban the active ban for a Root user ID (parentheses are optional).",
-  "!bans — list currently banned users, user IDs, reasons, and ban dates when available.",
-  "!purge count — delete up to 100 recent messages before this command.",
-  "!purge @user count — delete up to 100 messages by that member, scanning older history as needed.",
-  "!warn @user reason — save a dated warning; reason is required.",
-  "!warnings — show warning totals; !warnings @user — show that member's warning history.",
-  "!warn remove @user number — remove the numbered warning shown in the history.",
-  "!role add @user role-name-or-mention — add a role.",
-  "!role remove @user role-name-or-mention — remove a role.",
-  "!roles — list all community roles and their Root IDs in the mod channel.",
-  "!setmodchannel — set this channel for moderation logs and reports.",
-  "!setmodchannel clear — remove this community's configured mod channel.",
-  "!help — show this command list.",
+const PUBLIC_HELP_TEXT = [
+  "**Debo public commands**",
+  "!rank — show your rank, level, and XP.",
+  "!rank @user — show another member's rank, level, and XP.",
+  "!ranks — show the top 5 members with their levels and XP.",
+  "!ranks10 — show the top 10 members with their levels and XP.",
+  "!level — show your level only.",
+  "!level @user — show another member's level only.",
+  "!help — show this public command list.",
 ].join("\n");
 
-export async function showModerationHelp(
+const ADMIN_COMMANDS = [
+  "!modhelp — post the complete command list in the mod channel (Admin Role only).",
+  "!levelconfig — show XP, cooldown, and reward settings.",
+  "!levelconfig xp min max — set the random XP range.",
+  "!levelconfig cooldown seconds — set the per-member XP cooldown.",
+  "!levelconfig reward add level @role — add a role reward for any level.",
+  "!levelconfig reward list/remove/clear — manage configured level rewards.",
+  "!xp add amount @user — grant XP to a member.",
+  "!levelreset @user — reset a member to level 1 with 0 XP.",
+  "!spamconfig [limit|window|timeout] [value] — view or update spam controls.",
+  "!kick @user [reason] — remove a member without banning them.",
+  "!ban @user reason — permanently ban a member.",
+  "!unban userID — unban the active ban for a Root user ID.",
+  "!bans — list currently banned users and ban details.",
+  "!purge count — delete up to 100 recent messages before the command.",
+  "!purge @user count — delete up to 100 messages by that member.",
+  "!warn @user reason — save a dated warning.",
+  "!warnings [@user] — show warning totals or a member's history.",
+  "!warn remove @user number — remove a warning by its listed number.",
+  "!role add @user role-name-or-mention — add a role.",
+  "!role remove @user role-name-or-mention — remove a role.",
+  "!roles — list community roles and their Root IDs.",
+  "!setmodchannel — set this channel for moderation logs and reports.",
+  "!setmodchannel clear — clear the configured mod channel.",
+  "!setlogchannel — compatibility alias for !setmodchannel.",
+].join("\n");
+
+const MODERATOR_HELP_TEXT = [
+  "**Debo complete command list**",
+  PUBLIC_HELP_TEXT.replace("**Debo public commands**", "**Public commands**"),
+  "**Admin Role commands**",
+  ADMIN_COMMANDS,
+].join("\n");
+
+/** Public help always contains only commands available to everyone. */
+export async function showPublicHelp(
   event: ChannelMessageCreatedEvent,
 ): Promise<void> {
-  const requesterName = await getCommunityMemberName(event.userId);
-  const requester = rootUserMention(event.userId, requesterName);
-  const modChannelId = await getLogChannelId();
+  await reply(event, PUBLIC_HELP_TEXT);
+}
 
-  if (modChannelId) {
-    try {
-      const channel = await rootServer.community.channels.get({
-        id: modChannelId,
-      });
-      if (channel.channelPermission.channelCreateMessage) {
-        await postTextToLogChannel(
-          modChannelId,
-          `Help requested by ${requester}\n\n${HELP_TEXT}`,
-        );
-        await replyUnlessInChannel(
-          event,
-          modChannelId,
-          "I posted the command list in the mod channel.",
-        );
-        return;
-      }
-    } catch (error: unknown) {
-      console.error("Could not send the help list to the mod channel:", error);
-    }
+/** Full command help is sent only to the configured moderation channel. */
+export async function showModeratorHelp(
+  event: ChannelMessageCreatedEvent,
+): Promise<void> {
+  const modChannelId = await getLogChannelId();
+  if (!modChannelId) {
+    await reply(
+      event,
+      "The mod channel is not set. An admin can run !setmodchannel in the channel where moderator help should be posted.",
+    );
+    return;
   }
 
-  await reply(
-    event,
-    `I could not access a configured mod channel, so here is the command list instead.\n\n${HELP_TEXT}`,
-  );
+  try {
+    const channel = await rootServer.community.channels.get({
+      id: modChannelId,
+    });
+    if (!channel.channelPermission.channelCreateMessage) {
+      await reply(
+        event,
+        "I cannot post in the configured mod channel. Check Debo's channel permissions and try !modhelp again.",
+      );
+      return;
+    }
+
+    const requesterName = await getCommunityMemberName(event.userId);
+    const requester = rootUserMention(event.userId, requesterName);
+    await postTextToLogChannel(
+      modChannelId,
+      `Moderator help requested by ${requester}\n\n${MODERATOR_HELP_TEXT}`,
+    );
+    await replyUnlessInChannel(
+      event,
+      modChannelId,
+      "I posted the full command list in the mod channel.",
+    );
+  } catch (error: unknown) {
+    console.error("Could not send moderator help to the mod channel:", error);
+    await reply(
+      event,
+      "I could not access the configured mod channel. Check the channel settings and Debo's permissions, then try !modhelp again.",
+    );
+  }
 }

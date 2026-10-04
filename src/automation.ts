@@ -138,6 +138,15 @@ async function onMessage(event: ChannelMessageCreatedEvent): Promise<void> {
         case "rank":
           await showRank(event, parsed.args);
           break;
+        case "ranks":
+          await showTopRanks(event, parsed.args, 5);
+          break;
+        case "ranks10":
+          await showTopRanks(event, parsed.args, 10);
+          break;
+        case "level":
+          await showLevel(event, parsed.args);
+          break;
         case "levelconfig":
           await configureLeveling(event, parsed.args);
           break;
@@ -156,7 +165,9 @@ async function onMessage(event: ChannelMessageCreatedEvent): Promise<void> {
       }
     } catch (error: unknown) {
       console.error(`Automation command !${parsed.name} failed:`, error);
-      if (["rank", "levelconfig", "spamconfig", "xp", "levelreset"].includes(parsed.name)) {
+      if (
+        ["rank", "ranks", "ranks10", "level", "levelconfig", "spamconfig", "xp", "levelreset"].includes(parsed.name)
+      ) {
         await reply(
           event,
           `!${parsed.name} could not be completed: ${describeError(error)}. Check Debo's Root permissions and try again.`,
@@ -347,7 +358,7 @@ async function awardMessageXp(event: ChannelMessageCreatedEvent): Promise<void> 
   cacheXpRecord(event.userId, record);
 
   if (record.lastAwardMessageId === messageId) {
-    await ensureLevelRewards(event.userId, record, config);
+    await ensureLevelRewards(event, event.userId, record, config);
   }
 }
 
@@ -402,6 +413,7 @@ function normalizeXpRecord(value: unknown): UserXpRecord {
 }
 
 async function ensureLevelRewards(
+  event: ChannelMessageCreatedEvent,
   userId: UserGuid,
   record: UserXpRecord,
   config: AutomationConfig,
@@ -444,6 +456,13 @@ async function ensureLevelRewards(
             userIds: [userId],
           });
           memberRoleIds.add(roleId);
+
+          const memberName = await getCommunityMemberName(userId);
+          const roleName = await getCommunityRoleName(roleId);
+          await reply(
+            event,
+            `🎉 Congratulations, ${rootUserMention(userId, memberName)}! You reached level ${progress.level} and earned ${roleName}!`,
+          );
         }
 
         const updated = await rootServer.dataStore.appData.update<UserXpRecord>(
@@ -496,45 +515,105 @@ async function showRank(
     return;
   }
 
-  // Read the community leaderboard first, then match normalized Root IDs. This
-  // handles mentions whose GUID casing/format differs from the stored key.
   const leaderboard = await getLeaderboard();
-  const targetEntry = leaderboard.find(
-    (entry) => normalizeUserId(entry.userId) === normalizeUserId(userId),
-  );
-  let record: UserXpRecord;
-  if (targetEntry) {
-    // The leaderboard scan is the source of truth for other members; do not
-    // depend on reconstructing their exact appData key from a mention token.
-    record = { ...emptyXpRecord(), totalXp: targetEntry.totalXp };
-  } else {
-    record = normalizeXpRecord(
-      await rootServer.dataStore.appData.get<UserXpRecord>(xpKey(userId)),
-    );
-    cacheXpRecord(userId, record);
-    if (record.totalXp > 0) {
-      leaderboard.push({ userId, totalXp: record.totalXp });
-      leaderboard.sort(compareLeaderboardEntries);
-    }
+  const totalXp = await getMemberTotalXp(userId, leaderboard);
+  if (
+    totalXp > 0 &&
+    !leaderboard.some(
+      (entry) => normalizeUserId(entry.userId) === normalizeUserId(userId),
+    )
+  ) {
+    leaderboard.push({ userId, totalXp });
+    leaderboard.sort(compareLeaderboardEntries);
   }
 
   const rankIndex = leaderboard.findIndex(
     (entry) => normalizeUserId(entry.userId) === normalizeUserId(userId),
   );
-  const progress = calculateLevelProgress(record.totalXp);
-  const rankLine =
-    rankIndex < 0
-      ? "**Community rank:** Unranked (no XP yet)"
-      : `**Community rank:** #${rankIndex + 1} of ${leaderboard.length} members with XP`;
+  const progress = calculateLevelProgress(totalXp);
+  const rankLine = rankIndex < 0 ? "Unranked" : `#${rankIndex + 1}`;
   const memberMention = rootUserMention(userId, displayName);
 
   await reply(
     event,
-    `**Rank for ${memberMention}**\n${rankLine}\n**Level:** ${progress.level}\n**Total XP:** ${formatNumber(record.totalXp)}\n**Progress:** ${formatNumber(progress.xpIntoLevel)} / ${formatNumber(progress.xpForNextLevel)} XP toward level ${progress.level + 1}.`,
+    `**Rank for ${memberMention}**\n**Rank:** ${rankLine}\n**Level:** ${progress.level}\n**XP:** ${formatNumber(totalXp)}`,
   );
 }
 
 type LeaderboardEntry = { userId: UserGuid; totalXp: number };
+
+async function getMemberTotalXp(
+  userId: UserGuid,
+  leaderboard: LeaderboardEntry[],
+): Promise<number> {
+  const targetEntry = leaderboard.find(
+    (entry) => normalizeUserId(entry.userId) === normalizeUserId(userId),
+  );
+  if (targetEntry) return targetEntry.totalXp;
+
+  const record = normalizeXpRecord(
+    await rootServer.dataStore.appData.get<UserXpRecord>(xpKey(userId)),
+  );
+  cacheXpRecord(userId, record);
+  return record.totalXp;
+}
+
+async function showTopRanks(
+  event: ChannelMessageCreatedEvent,
+  args: CommandToken[],
+  limit: 5 | 10,
+): Promise<void> {
+  const command = limit === 5 ? "!ranks" : "!ranks10";
+  if (args.length !== 0) {
+    await reply(event, `Usage: ${command}`);
+    return;
+  }
+
+  const topMembers = (await getLeaderboard()).slice(0, limit);
+  if (topMembers.length === 0) {
+    await reply(event, "No members have earned XP yet.");
+    return;
+  }
+
+  const rows = await Promise.all(
+    topMembers.map(async (entry, index) => {
+      const name = await getCommunityMemberName(entry.userId);
+      const progress = calculateLevelProgress(entry.totalXp);
+      return `#${index + 1} ${rootUserMention(entry.userId, name)} — Level ${progress.level} · ${formatNumber(entry.totalXp)} XP`;
+    }),
+  );
+  await reply(event, [`**Top ${limit} members**`, ...rows].join("\n"));
+}
+
+async function showLevel(
+  event: ChannelMessageCreatedEvent,
+  args: CommandToken[],
+): Promise<void> {
+  let userId = event.userId;
+  let displayName = await getCommunityMemberName(userId);
+  const isSelfLookup = args.length === 0;
+
+  if (args.length === 1) {
+    const mentionedUser = await resolveMentionedUser(event, args[0]);
+    if (!mentionedUser) {
+      await reply(event, "Usage: !level or !level @user");
+      return;
+    }
+    userId = mentionedUser.userId;
+    displayName = mentionedUser.displayName;
+  } else if (args.length > 1) {
+    await reply(event, "Usage: !level or !level @user");
+    return;
+  }
+
+  const leaderboard = await getLeaderboard();
+  const totalXp = await getMemberTotalXp(userId, leaderboard);
+  const level = calculateLevelProgress(totalXp).level;
+  const subject = isSelfLookup
+    ? "Your level"
+    : `Level for ${rootUserMention(userId, displayName)}`;
+  await reply(event, `**${subject}:** ${level}`);
+}
 
 async function getLeaderboard(): Promise<LeaderboardEntry[]> {
   const prefix = xpKeyPrefix();
@@ -930,7 +1009,7 @@ async function addMemberXp(
   );
   const normalized = normalizeXpRecord(record);
   cacheXpRecord(target.userId, normalized);
-  await ensureLevelRewards(target.userId, normalized, configCache);
+  await ensureLevelRewards(event, target.userId, normalized, configCache);
 
   const progress = calculateLevelProgress(normalized.totalXp);
   await reply(

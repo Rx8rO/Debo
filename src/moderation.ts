@@ -8,7 +8,10 @@ import { checkModeratorRole } from "./moderation/access";
 import { initializeBanTracking } from "./moderation/ban-tracking";
 import { banMember } from "./moderation/commands/ban";
 import { showBans } from "./moderation/commands/bans";
-import { showModerationHelp } from "./moderation/commands/help";
+import {
+  showModeratorHelp,
+  showPublicHelp,
+} from "./moderation/commands/help";
 import { kickMember } from "./moderation/commands/kick";
 import { purgeMessages } from "./moderation/commands/purge";
 import { changeMemberRole } from "./moderation/commands/role";
@@ -25,7 +28,8 @@ const commands = new Map<string, ModerationCommand>([
   ["ban", (context, args) => banMember(context.event, args)],
   ["bans", (context, args) => showBans(context.event, args)],
   ["kick", (context, args) => kickMember(context.event, args)],
-  ["help", (context) => showModerationHelp(context.event)],
+  ["help", (context) => showPublicHelp(context.event)],
+  ["modhelp", (context) => showModeratorHelp(context.event)],
   ["purge", (context, args) => purgeMessages(context.event, args)],
   ["role", (context, args) => changeMemberRole(context.event, args)],
   ["roles", (context, args) => showRoles(context.event, args)],
@@ -54,7 +58,8 @@ async function onMessage(event: ChannelMessageCreatedEvent): Promise<void> {
   const handler = commands.get(parsed.name);
   if (!handler) return;
 
-  // Help is harmless and can be used while a community tests its setup.
+  // Public help is open to everyone; every other moderation command, including
+  // !modhelp, is protected by the selected Admin Role.
   if (parsed.name !== "help") {
     const authorization = await checkModeratorRole(event.userId);
     if (!authorization.allowed) {
