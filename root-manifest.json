@@ -1,6 +1,6 @@
 {
   "id": "ADGo9KrlgAmEqm3aTHZIpA",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "package": {
     "server": {
       "launch": "dist/main.js",
@@ -33,7 +33,7 @@
             "required": true,
             "confirmation": "Save",
             "roleOrMember": {
-              "selectBehavior": "userSingle",
+              "selectBehavior": "user",
               "userIds": [],
               "communityRoleIds": []
             }
