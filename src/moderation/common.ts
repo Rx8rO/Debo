@@ -1,6 +1,9 @@
 import {
+  ChannelGuid,
+  ChannelMessage,
   ChannelMessageCreatedEvent,
   ErrorCodeType,
+  MessageGuid,
   RootApiException,
   rootServer,
   UserGuid,
@@ -11,6 +14,8 @@ export type MentionedUser = {
   userId: UserGuid;
   displayName: string;
 };
+
+let deletionQueue: Promise<void> = Promise.resolve();
 
 export function getMentionedUser(
   event: ChannelMessageCreatedEvent,
@@ -46,18 +51,86 @@ export function getRoleMention(
   };
 }
 
+/** Send a visible reply connected to the user's command. */
 export async function reply(
   event: ChannelMessageCreatedEvent,
   content: string,
-): Promise<void> {
+  deleteAfterMs?: number,
+): Promise<ChannelMessage | undefined> {
   try {
-    await rootServer.community.channelMessages.create({
+    const message = await rootServer.community.channelMessages.create({
       channelId: event.channelId,
       content,
+      parentMessageIds: [event.id],
+      needsParentMessageNotification: true,
     });
-  } catch (error: unknown) {
-    console.error("Could not send a moderation command reply:", error);
+
+    if (deleteAfterMs !== undefined) {
+      scheduleMessageDeletion(event.channelId, message.id, deleteAfterMs);
+    }
+
+    return message;
+  } catch (replyError: unknown) {
+    // If Root rejects the parent link, try to deliver the response as a normal
+    // channel message so a command failure does not become invisible.
+    try {
+      const message = await rootServer.community.channelMessages.create({
+        channelId: event.channelId,
+        content,
+      });
+
+      if (deleteAfterMs !== undefined) {
+        scheduleMessageDeletion(event.channelId, message.id, deleteAfterMs);
+      }
+
+      return message;
+    } catch (error: unknown) {
+      console.error("Could not send a moderation command reply:", replyError, error);
+      return undefined;
+    }
   }
+}
+
+export function scheduleMessageDeletion(
+  channelId: ChannelGuid,
+  messageId: MessageGuid,
+  deleteAfterMs: number,
+): void {
+  setTimeout(() => {
+    deletionQueue = deletionQueue
+      .then(async () => {
+        // Message deletion is a write; pace queued removals below Root's limit.
+        await sleep(250);
+        await rootServer.community.channelMessages.delete({
+          channelId,
+          id: messageId,
+        });
+      })
+      .catch((error: unknown) => {
+        console.warn("Could not auto-delete a temporary moderation message:", error);
+      });
+  }, deleteAfterMs);
+}
+
+export async function getCommunityMemberName(
+  userId: UserGuid,
+): Promise<string> {
+  try {
+    const member = await rootServer.community.communityMembers.get({ userId });
+    return member.nickname || String(userId);
+  } catch {
+    return String(userId);
+  }
+}
+
+/** Build a safe Root mention so the requester is visible in the log-channel report. */
+export function rootUserMention(userId: UserGuid, name: string): string {
+  const label =
+    safeInlineText(name, 80)
+      .replace(/[\[\]()`]/g, "")
+      .replace(/^@+/, "")
+      .trim() || String(userId);
+  return `[@${label}](root://user/${userId})`;
 }
 
 export function describeError(error: unknown): string {

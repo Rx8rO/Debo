@@ -1,9 +1,16 @@
 import { ChannelMessageCreatedEvent } from "@rootsdk/server-bot";
 import { getMentionedUser } from "../command-helpers";
-import { reply, safeInlineText } from "../common";
+import {
+  getCommunityMemberName,
+  reply,
+  rootUserMention,
+  safeInlineText,
+} from "../common";
 import { getLogChannelOrReply, postTextToLogChannel } from "../logging";
 import { getWarningArchive, StoredWarning } from "../storage";
 import { CommandToken } from "../types";
+
+const WARNING_REPORT_DELETE_AFTER_MS = 15_000;
 
 export async function showWarnings(
   event: ChannelMessageCreatedEvent,
@@ -24,12 +31,23 @@ export async function showWarnings(
   if (!logChannelId) return;
 
   const archive = await getWarningArchive();
-  const content = target
+  const report = target
     ? formatUserWarnings(target.displayName, archive[target.userId] ?? [])
     : formatWarningTotals(archive);
+  const requesterName = await getCommunityMemberName(event.userId);
+  const content = [
+    `Requested by ${rootUserMention(event.userId, requesterName)}`,
+    report,
+  ].join("\n\n");
 
-  await postTextToLogChannel(logChannelId, content);
-  await reply(event, "Warning information was posted in the configured moderation log channel.");
+  await postTextToLogChannel(logChannelId, content, {
+    deleteAfterMs: WARNING_REPORT_DELETE_AFTER_MS,
+  });
+  await reply(
+    event,
+    "Warning information was posted in the moderation log channel and will be deleted after 15 seconds.",
+    WARNING_REPORT_DELETE_AFTER_MS,
+  );
 }
 
 function formatUserWarnings(name: string, warnings: StoredWarning[]): string {

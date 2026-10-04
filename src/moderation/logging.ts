@@ -4,7 +4,7 @@ import {
   rootServer,
   UserGuid,
 } from "@rootsdk/server-bot";
-import { reply, safeInlineText } from "./common";
+import { reply, safeInlineText, scheduleMessageDeletion, sleep } from "./common";
 import { getLogChannelId } from "./storage";
 
 export type ModerationLogEntry = {
@@ -13,6 +13,10 @@ export type ModerationLogEntry = {
   targetName: string;
   reason?: string;
   details?: string;
+};
+
+export type LogPostOptions = {
+  deleteAfterMs?: number;
 };
 
 export async function getLogChannelOrReply(
@@ -106,20 +110,33 @@ export async function logActionAndReply(
 export async function postTextToLogChannel(
   channelId: ChannelGuid,
   content: string,
-): Promise<void> {
+  options: LogPostOptions = {},
+): Promise<number> {
   const chunks = splitIntoChunks(content, 1700);
 
   for (let index = 0; index < chunks.length; index += 1) {
-    await rootServer.community.channelMessages.create({
+    const message = await rootServer.community.channelMessages.create({
       channelId,
       content: chunks[index],
     });
 
+    if (options.deleteAfterMs !== undefined) {
+      // Stagger chunk deletion; scheduleMessageDeletion also serializes deletes
+      // to avoid bursting Root's write limit when a long report spans chunks.
+      scheduleMessageDeletion(
+        channelId,
+        message.id,
+        options.deleteAfterMs + index * 250,
+      );
+    }
+
     if (index < chunks.length - 1) {
       // Root's approximate channel-message command limit is five requests/sec.
-      await new Promise((resolve) => setTimeout(resolve, 250));
+      await sleep(250);
     }
   }
+
+  return chunks.length;
 }
 
 function splitIntoChunks(content: string, maximumLength: number): string[] {

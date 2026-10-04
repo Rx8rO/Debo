@@ -8,6 +8,7 @@ import { checkModeratorRole } from "./moderation/access";
 import { banMember } from "./moderation/commands/ban";
 import { showModerationHelp } from "./moderation/commands/help";
 import { kickMember } from "./moderation/commands/kick";
+import { kickVoiceMember } from "./moderation/commands/kick-vc";
 import { purgeMessages } from "./moderation/commands/purge";
 import { changeMemberRole } from "./moderation/commands/role";
 import { setLogChannel } from "./moderation/commands/set-log-channel";
@@ -19,8 +20,16 @@ import { CommandContext, ModerationCommand } from "./moderation/types";
 
 const commands = new Map<string, ModerationCommand>([
   ["ban", (context, args) => banMember(context.event, args)],
-  ["kick", (context, args) => kickMember(context.event, args)],
-  ["modhelp", (context) => showModerationHelp(context.event)],
+  [
+    "kick",
+    (context, args) => {
+      if (typeof args[0] === "string" && args[0].toLowerCase() === "vc") {
+        return kickVoiceMember(context.event, args.slice(1));
+      }
+      return kickMember(context.event, args);
+    },
+  ],
+  ["help", (context) => showModerationHelp(context.event)],
   ["purge", (context, args) => purgeMessages(context.event, args)],
   ["role", (context, args) => changeMemberRole(context.event, args)],
   ["setlogchannel", (context, args) => setLogChannel(context.event, args)],
@@ -45,7 +54,7 @@ async function onMessage(event: ChannelMessageCreatedEvent): Promise<void> {
   if (!handler) return;
 
   // Help is harmless and can be used while a community tests its setup.
-  if (parsed.name !== "modhelp") {
+  if (parsed.name !== "help") {
     const authorization = await checkModeratorRole(event.userId);
     if (!authorization.allowed) {
       const message =
