@@ -6,6 +6,7 @@ import {
 } from "@rootsdk/server-bot";
 import { checkModeratorRole } from "./moderation/access";
 import { initializeBanTracking } from "./moderation/ban-tracking";
+import { initializeVoiceTracking } from "./moderation/voice-tracking";
 import { banMember } from "./moderation/commands/ban";
 import { showBans } from "./moderation/commands/bans";
 import { showModerationHelp } from "./moderation/commands/help";
@@ -13,6 +14,7 @@ import { kickMember } from "./moderation/commands/kick";
 import { kickVoiceMember } from "./moderation/commands/kick-vc";
 import { purgeMessages } from "./moderation/commands/purge";
 import { changeMemberRole } from "./moderation/commands/role";
+import { showRoles } from "./moderation/commands/roles";
 import { setModChannel } from "./moderation/commands/set-log-channel";
 import { unbanMember } from "./moderation/commands/unban";
 import { manageWarning } from "./moderation/commands/warn";
@@ -36,6 +38,7 @@ const commands = new Map<string, ModerationCommand>([
   ["help", (context) => showModerationHelp(context.event)],
   ["purge", (context, args) => purgeMessages(context.event, args)],
   ["role", (context, args) => changeMemberRole(context.event, args)],
+  ["roles", (context, args) => showRoles(context.event, args)],
   ["setmodchannel", (context, args) => setModChannel(context.event, args)],
   // Preserve the old command as an alias so existing moderators aren't caught out.
   ["setlogchannel", (context, args) => setModChannel(context.event, args)],
@@ -46,6 +49,7 @@ const commands = new Map<string, ModerationCommand>([
 
 export function initializeModerationBot(): void {
   initializeBanTracking();
+  initializeVoiceTracking();
   rootServer.community.channelMessages.on(
     ChannelMessageEvent.ChannelMessageCreated,
     onMessage,

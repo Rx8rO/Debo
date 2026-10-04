@@ -25,6 +25,7 @@ const HELP_TEXT = [
   "!warn remove @user number — remove the numbered warning shown in the history.",
   "!role add @user role-name-or-mention — add a role.",
   "!role remove @user role-name-or-mention — remove a role.",
+  "!roles — list all community roles and their Root IDs in the mod channel.",
   "!setmodchannel — set this channel for moderation logs and reports.",
   "!setmodchannel clear — remove this community's configured mod channel.",
   "!help — show this command list.",

@@ -21,6 +21,7 @@ Use a Root user mention for `@user` and either an exact role name or a Root role
 | `!warn remove @user number` | Removes the numbered warning shown by `!warnings @user`. |
 | `!role add @user role-name-or-mention` | Adds the named/mentioned role and logs the change. |
 | `!role remove @user role-name-or-mention` | Removes the named/mentioned role and logs the change. |
+| `!roles` | Lists all community roles and their Root IDs in the mod channel. |
 | `!setmodchannel` | Sets the channel where this command is run as this community's mod channel. |
 | `!setmodchannel clear` | Clears the configured mod channel. |
 | `!help` | Posts the command list in the mod channel; the list stays there. |
@@ -29,7 +30,7 @@ Use a Root user mention for `@user` and either an exact role name or a Root role
 
 `!purge` does not count or delete its own command message. Targeted purge uses Root message-history pagination and Root GUID timestamps; it has no arbitrary age cutoff. Deleting 100 messages is paced to stay under Root's approximate API rate limit, so a full purge can take a short while.
 
-`!warnings`, `!bans`, and `!help` reports are persistent messages in the mod channel. If the command is run outside the mod channel, Debo sends a brief confirmation reply that is deleted after 15 seconds. If the command is run inside the mod channel, Debo skips that redundant confirmation. The original command message is not deleted. Reports mention who requested them. `!warn` and `!warn remove` do not create logs.
+`!warnings`, `!bans`, `!roles`, and `!help` reports are persistent messages in the mod channel. If one of these commands is run outside the mod channel, Debo sends a brief confirmation reply that is deleted after 15 seconds. If the command is run inside the mod channel, Debo skips that redundant confirmation. The original command message is not deleted. Reports mention who requested them. `!warn` and `!warn remove` do not create logs.
 
 `!bans` reads Root's current active-ban list, so a successful `!unban userID` removes that user from the next list. Debo stores ban dates for bans it creates and for new ban events it observes while running. Root's current Ban API response does not include a creation date, so older bans (or bans created while Debo was offline) remain listed with their IDs/reasons but display the date as unavailable. Their reasons are displayed when Root provides one.
 
@@ -48,14 +49,14 @@ Root's Bot SDK does not expose a direct-message channel for sending a full help 
 
    If you already ran `npm.cmd install` in this same project folder, and `package.json` has not changed, skip it on later updates and just run `npm.cmd run build`. This update adds no dependencies.
 
-2. Install/update Debo to manifest version **1.3.0** and approve the new community `manageBans` permission; `!bans` and `!unban` need it. Then open Debo's **Global Settings** and select one role in **Admin Role**. Members need that role to run moderation commands. This setting only gates Debo's commands; it does not grant additional Root permissions. If the setting is missing, commands fail closed.
+2. Install/update Debo to manifest version **1.4.0** and approve the new community `manageBans` permission; `!bans` and `!unban` need it. Then open Debo's **Global Settings** and select one role in **Admin Role**. Members need that role to run moderation commands. This setting only gates Debo's commands; it does not grant additional Root permissions. If the setting is missing, commands fail closed.
 3. In the channel you want to use for moderation logs and reports, an authorized moderator runs:
 
    ```text
    !setmodchannel
    ```
 
-   The saved destination is retained from earlier versions of Debo. Root's current Global Settings docs say the client does not render a channel-picker control, so Debo uses this command rather than relying on an unrendered Global Settings dropdown. Make sure Debo can access and post in the mod channel. For `!kick vc`, Debo also needs visibility to the voice channel and the channel-level `voiceKick` permission; access-rule overlays can remove declared channel permissions.
+   The saved destination is retained from earlier versions of Debo. Root's current Global Settings docs say the client does not render a channel-picker control, so Debo uses this command rather than relying on an unrendered Global Settings dropdown. Make sure Debo can access and post in the mod channel. `!kick vc` scans voice channels Debo can see and also tracks live voice join/leave events. To kick in a particular channel, Root must still grant Debo visibility and the channel-level `voiceKick` permission there; access-rule overlays can remove declared channel permissions. Sessions that were already active before Debo started may need the member to reconnect before an otherwise hidden channel can be detected.
 4. Run `!help` in Root to see the command list.
 
 ## Local development and permissions
