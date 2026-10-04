@@ -1165,8 +1165,7 @@ async function checkAndHandleWordFilter(
 }
 
 async function isWordFilterExempt(userId: UserGuid): Promise<boolean> {
-  if ((await checkModeratorRole(userId)).allowed) return true;
-  return (await checkOwner(userId)).allowed;
+  return (await checkModeratorRole(userId)).allowed;
 }
 
 function getFilteredWordMatchers(): FilteredWordMatcher[] {
