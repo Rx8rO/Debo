@@ -1,6 +1,11 @@
-# Debo — Root Bot
+# Debo — Root Welcome Bot
 
-This repository contains the TypeScript starter project for Debo, created with Root's official `create-root` tool. The starter listens for `/echo <text>` in the bot's test community and replies with the same text. We will verify this basic bot first, then follow Root's Welcome Bot tutorial to count messages and assign a role.
+Debo is being built in two stages:
+
+1. Verify Root's tutorial behavior in the `Debo-Test` community: count a member's messages and assign the `Participant` role after their fifth message.
+2. Make the bot community-configurable with a Root global-setting role picker, so each community can choose its own role instead of relying on a role name in code.
+
+The current tutorial implementation stores counts in Root's persistent `appData` key-value store. It uses the incoming event's member ID, not a hardcoded user ID. For this tutorial stage only, it finds the role named `Participant` in the current community at runtime; it does not hardcode a role ID. We will replace this name lookup with a per-community setting after verifying the tutorial end to end.
 
 ## Local development
 
@@ -26,6 +31,8 @@ This repository contains the TypeScript starter project for Debo, created with R
    npm.cmd run bot
    ```
 
-5. Open the Root desktop app, enter the test community associated with the token, and send `/echo hello` in a channel the bot can access.
+5. In the `Debo-Test` community, post five messages as a member. Check the bot terminal for the count logs and verify that the member receives the `Participant` role after message five.
+
+For the tutorial test only, follow Root's role-permission setup in the disposable test community. Do not grant broad permissions such as Community Full Control in a real community. The final version should request only the permissions it needs and use community-level settings for each community's role choice.
 
 The `npm.cmd` form avoids PowerShell's script execution-policy issue. Command Prompt can use `npm` without the `.cmd` suffix.

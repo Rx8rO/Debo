@@ -1,8 +1,8 @@
 import { rootServer, RootBotStartState } from "@rootsdk/server-bot";
-import { initializeExample } from "./example"; // TODO: remove this line when you no longer need the example code
+import { initializeWelcomeBot } from "./example";
 
-async function onStarting(state: RootBotStartState) {
-  initializeExample(); // TODO: remove this line when you no longer need the example code
+async function onStarting(state: RootBotStartState): Promise<void> {
+  initializeWelcomeBot();
 }
 
 (async () => {

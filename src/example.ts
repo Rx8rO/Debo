@@ -1,60 +1,84 @@
-// TODO: delete this example code if not needed
-
-// Use "@rootsdk/server-bot" to import the Root API types
 import {
-  rootServer,
-  MessageType,
-  ChannelMessage,
-  ChannelMessageEvent,
   ChannelMessageCreatedEvent,
-  ChannelMessageCreateRequest,
+  ChannelMessageEvent,
+  CommunityMemberRoleAddRequest,
+  CommunityRole,
+  CommunityRoleGuid,
+  MessageType,
   RootApiException,
+  rootServer,
+  UserGuid,
 } from "@rootsdk/server-bot";
 
-// Initialize your Bot (set up your database, subscribe to community events, etc.)
-export function initializeExample(): void {
-  // Example: subscribe to be notified when members post new messages to any channel your Bot can see
+// This is the tutorial's temporary role-name lookup. Once the tutorial works,
+// we will replace it with a per-community role picker in root-manifest.json.
+const PARTICIPANT_ROLE_NAME = "Participant";
+const MESSAGES_REQUIRED = 5;
+
+// Register for new channel messages when the bot starts.
+export function initializeWelcomeBot(): void {
   rootServer.community.channelMessages.on(
     ChannelMessageEvent.ChannelMessageCreated,
     onMessage,
   );
 }
 
-// Example: process channel messages that start with "/echo ", send back the incoming text
 async function onMessage(evt: ChannelMessageCreatedEvent): Promise<void> {
-  // Ignore Root System messages - they aren't of interest to the Bot, nor will they have any 'messageContent'
+  // System events are not member messages and should not count.
   if (evt.messageType === MessageType.System) return;
 
-  const prefix: string = "/echo ";
-
-  // You receive all messages, only respond to ones that start with "/echo "
-  if (!evt.messageContent?.startsWith(prefix)) return;
-
-  // Retrieve the incoming message text without the "/echo " prefix
-  const incomingText: string = evt.messageContent
-    ?.substring(prefix.length)
-    .trim();
-
-  // Prepare the response - echo the incoming text to the same channel as the incoming message
-  const createMessageRequest: ChannelMessageCreateRequest = {
-    channelId: evt.channelId,
-    content: incomingText,
-  };
-
   try {
-    // Send the response to the community
-    const cm: ChannelMessage =
-      await rootServer.community.channelMessages.create(createMessageRequest);
-  } catch (xcpt: unknown) {
-    // Handle Root-generated exceptions
-    if (xcpt instanceof RootApiException) {
-      // 'errorCode' tells you what went wrong.
-      // E.g., perhaps your Bot doesn't have permission to create messages.
-      console.error("RootApiException:", xcpt.errorCode);
-    } else if (xcpt instanceof Error) {
-      console.error("Unexpected error:", xcpt.message);
+    // appData is Root's persistent key-value store. The key is the actual
+    // member ID from this event, so we do not hardcode a user ID.
+    const count: number = await rootServer.dataStore.appData.update(
+      evt.userId,
+      (previousCount: number) => previousCount + 1,
+      0,
+    );
+
+    console.log(`Message count for ${evt.userId}: ${count}`);
+
+    // The tutorial assigns Participant on the member's fifth message.
+    if (count === MESSAGES_REQUIRED) {
+      const roleId: CommunityRoleGuid = await getParticipantRoleId();
+      await assignRole(evt.userId, roleId);
+      console.log(`Assigned ${PARTICIPANT_ROLE_NAME} to ${evt.userId}`);
+    }
+  } catch (error: unknown) {
+    if (error instanceof RootApiException) {
+      console.error("Root API error while processing message:", error.errorCode);
+    } else if (error instanceof Error) {
+      console.error("Error while processing message:", error.message);
     } else {
-      console.error("Unknown error:", xcpt);
+      console.error("Unknown error while processing message:", error);
     }
   }
+}
+
+async function getParticipantRoleId(): Promise<CommunityRoleGuid> {
+  const roles: CommunityRole[] =
+    await rootServer.community.communityRoles.list();
+  const participantRole = roles.find(
+    (role: CommunityRole) => role.name === PARTICIPANT_ROLE_NAME,
+  );
+
+  if (!participantRole) {
+    throw new Error(
+      `Role "${PARTICIPANT_ROLE_NAME}" was not found in this community.`,
+    );
+  }
+
+  return participantRole.id;
+}
+
+async function assignRole(
+  userId: UserGuid,
+  roleId: CommunityRoleGuid,
+): Promise<void> {
+  const request: CommunityMemberRoleAddRequest = {
+    communityRoleId: roleId,
+    userIds: [userId],
+  };
+
+  await rootServer.community.communityMemberRoles.add(request);
 }
