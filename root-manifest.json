@@ -21,7 +21,7 @@
             "required": true,
             "confirmation": "Save",
             "roleOrMember": {
-              "selectBehavior": "roleSingle",
+              "selectBehavior": "role",
               "userIds": [],
               "communityRoleIds": []
             }
