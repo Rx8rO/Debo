@@ -1620,6 +1620,16 @@ async function checkAndHandleWordFilter(
 async function isFilterBypassed(
   event: ChannelMessageCreatedEvent,
 ): Promise<boolean> {
+  try {
+    const stored = await rootServer.dataStore.appData.get<unknown>(filterBypassKey());
+    if (stored && typeof stored === "object") {
+      setFilterBypassCache(normalizeFilterBypasses(stored));
+    }
+  } catch (error: unknown) {
+    // Retain the in-memory setting if storage is temporarily unavailable.
+    console.warn("Could not refresh word-filter bypasses from appData:", error);
+  }
+
   const userId = normalizeFilterBypassId(String(event.userId));
   if (!userId) return false;
   if (filterBypassConfig.users.some((target) => target.id === userId)) {
@@ -1845,7 +1855,19 @@ function normalizeFilterBypassTargets(value: unknown): FilterBypassTarget[] {
 
 function normalizeFilterBypassId(value: unknown): string | undefined {
   if (typeof value !== "string" || value.trim().length === 0) return undefined;
-  return value.trim().replace(/[{}]/g, "").toLowerCase();
+
+  let id = value.trim();
+  try {
+    id = decodeURIComponent(id);
+  } catch {
+    // Keep the original value if Root supplied a non-URI identifier.
+  }
+  return id
+    .replace(/^root:\/\/(?:user|role)\//i, "")
+    .replace(/[{}]/g, "")
+    .replace(/^(?:user|role):/i, "")
+    .replace(/\/$/, "")
+    .toLowerCase();
 }
 
 async function saveFilterBypasses(config: FilterBypassConfig): Promise<void> {
