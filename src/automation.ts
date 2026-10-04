@@ -25,8 +25,7 @@ type AutomationConfig = {
   xpMinPerMessage: number;
   xpMaxPerMessage: number;
   xpCooldownSeconds: number;
-  rewardRoleLevel: number;
-  additionalRewardRolesByLevel: Record<string, CommunityRoleGuid[]>;
+  rewardRolesByLevel: Record<string, CommunityRoleGuid[]>;
   spamMessageLimit: number;
   spamWindowSeconds: number;
   spamTimeoutSeconds: number;
@@ -57,14 +56,14 @@ const DEFAULT_CONFIG: AutomationConfig = {
   xpMinPerMessage: 5,
   xpMaxPerMessage: 10,
   xpCooldownSeconds: 60,
-  rewardRoleLevel: 5,
-  additionalRewardRolesByLevel: {},
+  rewardRolesByLevel: {},
   spamMessageLimit: 5,
   spamWindowSeconds: 1,
   spamTimeoutSeconds: 10,
 };
 const XP_PER_LEVEL_STEP = 100;
 const MAX_XP_PER_MESSAGE = 10_000;
+const MAX_MANUAL_XP_AMOUNT = 1_000_000;
 const MAX_XP_COOLDOWN_SECONDS = 86_400;
 const MAX_REWARD_LEVEL = 1_000;
 const MAX_SPAM_MESSAGE_LIMIT = 1_000;
@@ -101,23 +100,23 @@ export function initializeAutomationBot(communityId: CommunityGuid): void {
   );
 }
 
-/** XP to reach level N is 100 * (1 + 2 + ... + N). */
+/** A new member starts at level 1; each level-up requires 100 more XP. */
 export function calculateLevelProgress(totalXp: number): LevelProgress {
   const xp = Number.isFinite(totalXp)
     ? Math.max(0, Math.min(Math.floor(totalXp), Number.MAX_SAFE_INTEGER))
     : 0;
-  let level = Math.floor(
+  let levelUps = Math.floor(
     (Math.sqrt(1 + (8 * xp) / XP_PER_LEVEL_STEP) - 1) / 2,
   );
 
   // Correct for floating-point rounding around exact level boundaries.
-  while (level > 0 && xpRequiredForLevel(level) > xp) level -= 1;
-  while (xpRequiredForLevel(level + 1) <= xp) level += 1;
+  while (levelUps > 0 && xpRequiredForLevel(levelUps) > xp) levelUps -= 1;
+  while (xpRequiredForLevel(levelUps + 1) <= xp) levelUps += 1;
 
   return {
-    level,
-    xpIntoLevel: xp - xpRequiredForLevel(level),
-    xpForNextLevel: (level + 1) * XP_PER_LEVEL_STEP,
+    level: levelUps + 1,
+    xpIntoLevel: xp - xpRequiredForLevel(levelUps),
+    xpForNextLevel: (levelUps + 1) * XP_PER_LEVEL_STEP,
   };
 }
 
@@ -145,13 +144,19 @@ async function onMessage(event: ChannelMessageCreatedEvent): Promise<void> {
         case "spamconfig":
           await configureSpam(event, parsed.args);
           break;
+        case "xp":
+          await addMemberXp(event, parsed.args);
+          break;
+        case "levelreset":
+          await resetMemberLevel(event, parsed.args);
+          break;
         default:
           // Commands (including moderation commands) do not earn XP.
           break;
       }
     } catch (error: unknown) {
       console.error(`Automation command !${parsed.name} failed:`, error);
-      if (["rank", "levelconfig", "spamconfig"].includes(parsed.name)) {
+      if (["rank", "levelconfig", "spamconfig", "xp", "levelreset"].includes(parsed.name)) {
         await reply(
           event,
           `!${parsed.name} could not be completed: ${describeError(error)}. Check Debo's Root permissions and try again.`,
@@ -171,7 +176,9 @@ async function onMessage(event: ChannelMessageCreatedEvent): Promise<void> {
 async function loadAutomationConfig(): Promise<void> {
   try {
     const stored = await rootServer.dataStore.appData.get<
-      Partial<AutomationConfig>
+      Partial<AutomationConfig> & {
+        additionalRewardRolesByLevel?: unknown;
+      }
     >(configKey());
     configCache = normalizeConfig(stored);
   } catch (error: unknown) {
@@ -183,7 +190,9 @@ async function loadAutomationConfig(): Promise<void> {
 function normalizeConfig(value: unknown): AutomationConfig {
   const source =
     value && typeof value === "object"
-      ? (value as Partial<AutomationConfig>)
+      ? (value as Partial<AutomationConfig> & {
+          additionalRewardRolesByLevel?: unknown;
+        })
       : {};
   const xpMinPerMessage = boundedInteger(
     source.xpMinPerMessage,
@@ -197,6 +206,10 @@ function normalizeConfig(value: unknown): AutomationConfig {
     1,
     MAX_XP_PER_MESSAGE,
   );
+  const rewardRolesByLevel =
+    source.rewardRolesByLevel !== undefined
+      ? normalizeRewardMappings(source.rewardRolesByLevel)
+      : migrateLegacyRewardMappings(source.additionalRewardRolesByLevel);
 
   return {
     xpMinPerMessage,
@@ -207,15 +220,7 @@ function normalizeConfig(value: unknown): AutomationConfig {
       0,
       MAX_XP_COOLDOWN_SECONDS,
     ),
-    rewardRoleLevel: boundedInteger(
-      source.rewardRoleLevel,
-      DEFAULT_CONFIG.rewardRoleLevel,
-      1,
-      MAX_REWARD_LEVEL,
-    ),
-    additionalRewardRolesByLevel: normalizeRewardMappings(
-      source.additionalRewardRolesByLevel,
-    ),
+    rewardRolesByLevel,
     spamMessageLimit: boundedInteger(
       source.spamMessageLimit,
       DEFAULT_CONFIG.spamMessageLimit,
@@ -260,6 +265,20 @@ function normalizeRewardMappings(
     if (validRoleIds.length > 0) mappings[String(level)] = validRoleIds;
   }
   return mappings;
+}
+
+function migrateLegacyRewardMappings(value: unknown): Record<string, CommunityRoleGuid[]> {
+  const legacyMappings = normalizeRewardMappings(value);
+  const migrated: Record<string, CommunityRoleGuid[]> = {};
+  for (const [levelText, roleIds] of Object.entries(legacyMappings)) {
+    // Older builds started at level 0. Shift legacy reward levels so each role
+    // still unlocks at the same XP threshold under the new level-1 baseline.
+    const legacyLevel = Number(levelText);
+    const newLevel = Math.min(MAX_REWARD_LEVEL, legacyLevel + 1);
+    const key = String(newLevel);
+    migrated[key] = Array.from(new Set([...(migrated[key] ?? []), ...roleIds]));
+  }
+  return migrated;
 }
 
 function boundedInteger(
@@ -389,13 +408,9 @@ async function ensureLevelRewards(
 ): Promise<void> {
   const progress = calculateLevelProgress(record.totalXp);
   const rewards = new Set<CommunityRoleGuid>();
-  const primaryRoleId = getConfiguredRoleId("levelRewardRole");
-  if (primaryRoleId && progress.level >= config.rewardRoleLevel) {
-    rewards.add(primaryRoleId);
-  }
 
   for (const [levelText, roleIds] of Object.entries(
-    config.additionalRewardRolesByLevel,
+    config.rewardRolesByLevel,
   )) {
     if (Number(levelText) <= progress.level) {
       for (const roleId of roleIds) rewards.add(roleId);
@@ -469,7 +484,7 @@ async function showRank(
   if (args.length === 0) {
     displayName = await getCommunityMemberName(userId);
   } else if (args.length === 1) {
-    const mentionedUser = getMentionedUser(event, args[0]);
+    const mentionedUser = await resolveMentionedUser(event, args[0]);
     if (!mentionedUser) {
       await reply(event, "Usage: !rank or !rank @user");
       return;
@@ -545,6 +560,68 @@ async function getLeaderboard(): Promise<LeaderboardEntry[]> {
 
 function normalizeUserId(userId: UserGuid): string {
   return String(userId).trim().replace(/[{}]/g, "").toLowerCase();
+}
+
+function normalizePersonName(name: string): string {
+  return name.trim().replace(/^@+/, "").toLocaleLowerCase();
+}
+
+async function resolveMentionedUser(
+  event: ChannelMessageCreatedEvent,
+  token: CommandToken | undefined,
+): Promise<ReturnType<typeof getMentionedUser>> {
+  const mentionedUser = getMentionedUser(event, token);
+  if (!mentionedUser) return undefined;
+
+  const references = event.referenceMaps?.users ?? [];
+  const idReference = references.find(
+    (candidate) =>
+      normalizeUserId(candidate.userId) === normalizeUserId(mentionedUser.userId),
+  );
+  if (idReference) {
+    return { userId: idReference.userId, displayName: idReference.name };
+  }
+
+  try {
+    const member = await rootServer.community.communityMembers.get({
+      userId: mentionedUser.userId,
+    });
+    return {
+      userId: member.userId,
+      displayName: member.nickname || mentionedUser.displayName,
+    };
+  } catch {
+    // The mention may contain an alias or stale GUID; try its reference name.
+  }
+
+  const nameReference = references.find(
+    (candidate) =>
+      normalizePersonName(candidate.name) ===
+      normalizePersonName(mentionedUser.displayName),
+  );
+  if (nameReference) {
+    return { userId: nameReference.userId, displayName: nameReference.name };
+  }
+
+  const member = await findUniqueCommunityMemberByName(mentionedUser.displayName);
+  return member
+    ? { userId: member.userId, displayName: member.nickname }
+    : mentionedUser;
+}
+
+async function findUniqueCommunityMemberByName(
+  name: string,
+): Promise<{ userId: UserGuid; nickname: string } | undefined> {
+  try {
+    const members = await rootServer.community.communityMembers.listAll();
+    const matches = members.filter(
+      (member) => normalizePersonName(member.nickname) === normalizePersonName(name),
+    );
+    return matches.length === 1 ? matches[0] : undefined;
+  } catch (error: unknown) {
+    console.warn("Could not resolve a mention by community member name:", error);
+    return undefined;
+  }
 }
 
 function compareLeaderboardEntries(
@@ -626,21 +703,6 @@ async function configureLeveling(
     return;
   }
 
-  if (field === "rolelevel") {
-    const value = readInteger(rawValue, 1, MAX_REWARD_LEVEL);
-    if (value === undefined) {
-      await reply(event, `Reward level must be a whole number from 1 to ${MAX_REWARD_LEVEL}.`);
-      return;
-    }
-    config.rewardRoleLevel = value;
-    await saveAutomationConfig(config);
-    await reply(
-      event,
-      `Saved: the Level Reward Role selected in Global Settings is assigned at level ${value} or higher.`,
-    );
-    return;
-  }
-
   await reply(event, levelConfigUsage());
 }
 
@@ -662,10 +724,10 @@ async function configureRewardMapping(
       await reply(event, `Reward level must be a whole number from 1 to ${MAX_REWARD_LEVEL}.`);
       return;
     }
-    const config = { ...currentConfig, additionalRewardRolesByLevel: { ...currentConfig.additionalRewardRolesByLevel } };
-    delete config.additionalRewardRolesByLevel[String(level)];
+    const config = { ...currentConfig, rewardRolesByLevel: { ...currentConfig.rewardRolesByLevel } };
+    delete config.rewardRolesByLevel[String(level)];
     await saveAutomationConfig(config);
-    await reply(event, `Cleared extra reward-role settings for level ${level}.`);
+    await reply(event, `Cleared reward roles for level ${level}.`);
     return;
   }
 
@@ -682,10 +744,10 @@ async function configureRewardMapping(
 
     const roleId = mentionedRole.roleId as CommunityRoleGuid;
     const mappingKey = String(level);
-    const currentRoleIds = currentConfig.additionalRewardRolesByLevel[mappingKey] ?? [];
+    const currentRoleIds = currentConfig.rewardRolesByLevel[mappingKey] ?? [];
     const config = {
       ...currentConfig,
-      additionalRewardRolesByLevel: { ...currentConfig.additionalRewardRolesByLevel },
+      rewardRolesByLevel: { ...currentConfig.rewardRolesByLevel },
     };
 
     if (action === "add") {
@@ -701,7 +763,7 @@ async function configureRewardMapping(
         await reply(event, `That role is already configured as a level ${level} reward.`);
         return;
       }
-      config.additionalRewardRolesByLevel[mappingKey] = [...currentRoleIds, roleId];
+      config.rewardRolesByLevel[mappingKey] = [...currentRoleIds, roleId];
       await saveAutomationConfig(config);
       await reply(
         event,
@@ -716,9 +778,9 @@ async function configureRewardMapping(
     }
     const remainingRoleIds = currentRoleIds.filter((id) => id !== roleId);
     if (remainingRoleIds.length > 0) {
-      config.additionalRewardRolesByLevel[mappingKey] = remainingRoleIds;
+      config.rewardRolesByLevel[mappingKey] = remainingRoleIds;
     } else {
-      delete config.additionalRewardRolesByLevel[mappingKey];
+      delete config.rewardRolesByLevel[mappingKey];
     }
     await saveAutomationConfig(config);
     await reply(event, `Removed that role from the level ${level} reward list.`);
@@ -736,18 +798,11 @@ async function listLevelRewards(
   config: AutomationConfig,
 ): Promise<void> {
   const lines: string[] = ["**Configured level rewards**"];
-  const primaryRoleId = getConfiguredRoleId("levelRewardRole");
-  if (primaryRoleId) {
-    lines.push(
-      `Level ${config.rewardRoleLevel} or higher (Global Settings): ${await getCommunityRoleName(primaryRoleId)}`,
-    );
-  }
-
-  const levels = Object.keys(config.additionalRewardRolesByLevel)
+  const levels = Object.keys(config.rewardRolesByLevel)
     .map(Number)
     .sort((left, right) => left - right);
   for (const level of levels) {
-    const roleIds = config.additionalRewardRolesByLevel[String(level)] ?? [];
+    const roleIds = config.rewardRolesByLevel[String(level)] ?? [];
     for (const roleId of roleIds) {
       lines.push(`Level ${level}: ${await getCommunityRoleName(roleId)}`);
     }
@@ -768,7 +823,7 @@ async function getCommunityRoleName(roleId: CommunityRoleGuid): Promise<string> 
 
 function levelConfigUsage(): string {
   return [
-    "Leveling: !levelconfig xp <min> <max> | cooldown <seconds> | rolelevel <level>",
+    "Leveling: !levelconfig xp <min> <max> | cooldown <seconds>",
     "Rewards: !levelconfig reward list | add <level> @role | remove <level> @role | clear <level>",
   ].join("\n");
 }
@@ -845,6 +900,69 @@ async function configureSpam(
   );
 }
 
+async function addMemberXp(
+  event: ChannelMessageCreatedEvent,
+  args: CommandToken[],
+): Promise<void> {
+  if (!(await requireAutomationAdmin(event))) return;
+  if (args.length !== 3 || typeof args[0] !== "string" || args[0].toLowerCase() !== "add") {
+    await reply(event, `Usage: !xp add <amount> @user (1–${MAX_MANUAL_XP_AMOUNT} XP)`);
+    return;
+  }
+
+  const amount = readInteger(tokenToText(args[1]), 1, MAX_MANUAL_XP_AMOUNT);
+  const target = await resolveMentionedUser(event, args[2]);
+  if (amount === undefined || !target) {
+    await reply(event, `Usage: !xp add <amount> @user (1–${MAX_MANUAL_XP_AMOUNT} XP)`);
+    return;
+  }
+
+  const record = await rootServer.dataStore.appData.update<UserXpRecord>(
+    xpKey(target.userId),
+    (stored) => {
+      const current = normalizeXpRecord(stored);
+      return {
+        ...current,
+        totalXp: Math.min(Number.MAX_SAFE_INTEGER, current.totalXp + amount),
+      };
+    },
+    emptyXpRecord(),
+  );
+  const normalized = normalizeXpRecord(record);
+  cacheXpRecord(target.userId, normalized);
+  await ensureLevelRewards(target.userId, normalized, configCache);
+
+  const progress = calculateLevelProgress(normalized.totalXp);
+  await reply(
+    event,
+    `Added ${formatNumber(amount)} XP to ${rootUserMention(target.userId, target.displayName)}. Their total is ${formatNumber(normalized.totalXp)} XP (level ${progress.level}).`,
+  );
+}
+
+async function resetMemberLevel(
+  event: ChannelMessageCreatedEvent,
+  args: CommandToken[],
+): Promise<void> {
+  if (!(await requireAutomationAdmin(event))) return;
+  const target =
+    args.length === 1 ? await resolveMentionedUser(event, args[0]) : undefined;
+  if (!target) {
+    await reply(event, "Usage: !levelreset @user");
+    return;
+  }
+
+  await rootServer.dataStore.appData.update<UserXpRecord>(
+    xpKey(target.userId),
+    () => ({ totalXp: 0, lastXpAt: 0, assignedRewardRoleIds: [] }),
+    emptyXpRecord(),
+  );
+  xpRecordsByUser.delete(target.userId);
+  await reply(
+    event,
+    `Reset ${rootUserMention(target.userId, target.displayName)} to level 1 with 0 XP. This does not remove roles they already earned.`,
+  );
+}
+
 async function requireAutomationAdmin(
   event: ChannelMessageCreatedEvent,
 ): Promise<boolean> {
@@ -856,19 +974,18 @@ async function requireAutomationAdmin(
 }
 
 function formatLevelingConfig(config: AutomationConfig): string {
-  const roleConfigured = getConfiguredRoleId("levelRewardRole") !== undefined;
-  const extraRewardCount = Object.values(
-    config.additionalRewardRolesByLevel,
-  ).reduce((count, roleIds) => count + roleIds.length, 0);
+  const rewardCount = Object.values(config.rewardRolesByLevel).reduce(
+    (count, roleIds) => count + roleIds.length,
+    0,
+  );
   return [
     "**Leveling configuration**",
     `Random XP per eligible message: ${config.xpMinPerMessage}–${config.xpMaxPerMessage}`,
     `XP cooldown: ${config.xpCooldownSeconds} seconds${config.xpCooldownSeconds === 0 ? " (disabled)" : ""}`,
-    `Global Settings reward role: ${roleConfigured ? `selected at level ${config.rewardRoleLevel}` : "not selected"}`,
-    `Additional level-specific reward roles: ${extraRewardCount}`,
-    "Level 1 requires 100 XP; each next level requires 100 more XP than the previous one.",
-    "Use !levelconfig reward list to view role rewards; reward add/remove/clear commands manage any level.",
-    "Use !levelconfig xp <min> <max>, cooldown <seconds>, or rolelevel <level> to change values.",
+    `Configured level rewards: ${rewardCount}`,
+    "Level 1 starts at 0 XP; level 2 takes 100 XP and each later level requires 100 more XP than the previous one.",
+    "Use !levelconfig reward list to view rewards; reward add/remove/clear commands manage any level.",
+    "Use !levelconfig xp <min> <max> or !levelconfig cooldown <seconds> to change leveling values.",
   ].join("\n");
 }
 
@@ -1131,7 +1248,7 @@ async function expireSpamTimeout(
 }
 
 function getConfiguredRoleId(
-  settingKey: "levelRewardRole" | "spamTimeoutRole",
+  settingKey: "spamTimeoutRole",
 ): CommunityRoleGuid | undefined {
   const rawSetting = rootServer.globalSettings?.automation?.[settingKey];
   if (!rawSetting || typeof rawSetting !== "object") return undefined;

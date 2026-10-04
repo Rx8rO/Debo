@@ -1,6 +1,6 @@
 {
   "id": "ADGo9KrlgAmEqm3aTHZIpA",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "package": {
     "server": {
       "launch": "dist/main.js",
@@ -32,18 +32,6 @@
         "key": "automation",
         "title": "Automation",
         "items": [
-          {
-            "key": "levelRewardRole",
-            "title": "Level Reward Role",
-            "description": "Optional primary role Debo assigns at the configured reward level. Add additional roles for any level with the admin-only !levelconfig reward add command.",
-            "required": false,
-            "confirmation": "Save",
-            "roleOrMember": {
-              "selectBehavior": "role",
-              "userIds": [],
-              "communityRoleIds": []
-            }
-          },
           {
             "key": "spamTimeoutRole",
             "title": "Spam Timeout Role",
