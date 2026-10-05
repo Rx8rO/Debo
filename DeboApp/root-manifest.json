@@ -29,7 +29,7 @@
             "required": true,
             "confirmation": "Save",
             "roleOrMember": {
-              "selectBehavior": "roleSingle",
+              "selectBehavior": "role",
               "userIds": [],
               "communityRoleIds": []
             }
@@ -41,7 +41,7 @@
             "required": true,
             "confirmation": "Save",
             "roleOrMember": {
-              "selectBehavior": "userSingle",
+              "selectBehavior": "user",
               "userIds": [],
               "communityRoleIds": []
             }
