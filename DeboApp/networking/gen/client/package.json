@@ -1,0 +1,13 @@
+{
+  "name": "@deboapp/gen-client",
+  "version": "1.0.1791206619332",
+	"dependencies": {
+		"@deboapp/gen-shared": "file:../shared"
+	},
+  "main": "./dist/mjs/index.js",
+  "typings": "./dist/mjs/index.d.ts",
+	"type": "module",
+	"scripts": { 
+		"build": "tsc"
+	}
+}

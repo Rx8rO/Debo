@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+
+package debo;
+
+message Empty {}
+
+message RankEntry {
+  string user_id = 1;
+  string display_name = 2;
+  uint32 rank = 3;
+  uint32 level = 4;
+  string total_xp = 5;
+  bool is_ranked = 6;
+}
+
+message MemberDashboardResponse {
+  RankEntry member = 1;
+  repeated RankEntry top_five = 2;
+  repeated RankEntry top_ten = 3;
+}
+
+message RoleOption {
+  string id = 1;
+  string name = 2;
+}
+
+message ChannelOption {
+  string id = 1;
+  string name = 2;
+}
+
+message RewardMapping {
+  uint32 level = 1;
+  repeated RoleOption roles = 2;
+}
+
+message AdminDashboardResponse {
+  bool allowed = 1;
+  bool is_owner = 2;
+  uint32 xp_min_per_message = 3;
+  uint32 xp_max_per_message = 4;
+  uint32 xp_cooldown_seconds = 5;
+  uint32 spam_message_limit = 6;
+  double spam_window_seconds = 7;
+  uint32 spam_timeout_seconds = 8;
+  string spam_timeout_role_id = 9;
+  repeated RewardMapping reward_mappings = 10;
+  repeated string filter_words = 11;
+  repeated RoleOption roles = 12;
+  repeated ChannelOption channels = 13;
+  string mod_channel_id = 14;
+  string log_channel_id = 15;
+}
+
+message UpdateAutomationConfigRequest {
+  uint32 xp_min_per_message = 1;
+  uint32 xp_max_per_message = 2;
+  uint32 xp_cooldown_seconds = 3;
+  uint32 spam_message_limit = 4;
+  double spam_window_seconds = 5;
+  uint32 spam_timeout_seconds = 6;
+  string spam_timeout_role_id = 7;
+}
+
+message RewardRoleRequest {
+  uint32 level = 1;
+  string role_id = 2;
+}
+
+message RewardLevelRequest {
+  uint32 level = 1;
+}
+
+message FilterTermsRequest {
+  string terms = 1;
+}
+
+message ChannelRequest {
+  string channel_id = 1;
+}
+
+service DeboDashboardService {
+  rpc GetMemberDashboard(Empty) returns (MemberDashboardResponse);
+  rpc GetAdminDashboard(Empty) returns (AdminDashboardResponse);
+  rpc SaveAutomationConfig(UpdateAutomationConfigRequest) returns (Empty);
+  rpc AddRewardRole(RewardRoleRequest) returns (Empty);
+  rpc RemoveRewardRole(RewardRoleRequest) returns (Empty);
+  rpc ClearRewardLevel(RewardLevelRequest) returns (Empty);
+  rpc AddFilterTerms(FilterTermsRequest) returns (Empty);
+  rpc RemoveFilterTerms(FilterTermsRequest) returns (Empty);
+  rpc ClearFilter(Empty) returns (Empty);
+  rpc SetModChannel(ChannelRequest) returns (Empty);
+  rpc ClearModChannel(Empty) returns (Empty);
+  rpc SetLogChannel(ChannelRequest) returns (Empty);
+  rpc ClearLogChannel(Empty) returns (Empty);
+}

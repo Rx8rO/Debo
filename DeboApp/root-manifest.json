@@ -1,0 +1,66 @@
+{
+  "id": "ADGtuq6yhgmzM5InhEGOTA",
+  "version": "1.0.0",
+  "package": {
+    "client": {
+      "deploy": "client/dist"
+    },
+    "server": {
+      "launch": "server/dist/main.js",
+      "deploy": [
+        "server/dist",
+        "networking/gen/server"
+      ],
+      "nodeModules": [
+        "node_modules"
+      ]
+    }
+  },
+  "settings": {
+    "groups": [
+      {
+        "key": "moderation",
+        "title": "Moderation",
+        "items": [
+          {
+            "key": "adminRole",
+            "title": "Admin Role",
+            "description": "Members with this role can use Admin Role moderation commands. Public commands remain open to everyone; Owner-only commands require the selected Owner. This setting does not grant additional Root permissions.",
+            "required": true,
+            "confirmation": "Save",
+            "roleOrMember": {
+              "selectBehavior": "roleSingle",
+              "userIds": [],
+              "communityRoleIds": []
+            }
+          },
+          {
+            "key": "owner",
+            "title": "Owner",
+            "description": "Select exactly one community member who can use Owner-only commands and manage settings in the Admin / Mod dashboard. This setting does not grant additional Root permissions.",
+            "required": true,
+            "confirmation": "Save",
+            "roleOrMember": {
+              "selectBehavior": "userSingle",
+              "userIds": [],
+              "communityRoleIds": []
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "community": {
+      "kick": true,
+      "createBan": true,
+      "manageBans": true,
+      "manageRoles": true
+    },
+    "channel": {
+      "createMessage": true,
+      "deleteMessageOther": true,
+      "viewMessageHistory": true
+    }
+  }
+}
